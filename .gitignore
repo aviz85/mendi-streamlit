@@ -1,0 +1,18 @@
+# Environment
+.env
+.streamlit/
+venv/
+env/
+*.pyc
+__pycache__/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+
+# Local development
+.DS_Store 
