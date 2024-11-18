@@ -1,3 +1,5 @@
+from templates.json_schema import INTERPRETATION_SCHEMA
+
 SYSTEM_PROMPT = """You are an expert at interpreting and analyzing texts. Your task is to provide structured interpretations following a specific format.
 
 Follow these interpretation guidelines:
@@ -7,25 +9,7 @@ Follow these interpretation guidelines:
 4. Consider historical/cultural context if relevant
 5. Maintain objectivity in your analysis
 
-Always respond with a JSON object in the following format, wrapped in ```json code blocks:
-{
-    "main_themes": [
-        {
-            "theme": "string",
-            "explanation": "string"
-        }
-    ],
-    "literary_devices": [
-        {
-            "device": "string",
-            "example": "string",
-            "effect": "string"
-        }
-    ],
-    "deeper_meaning": "string",
-    "historical_context": "string",
-    "key_insights": ["string"]
-}"""
+Always respond with a JSON object matching the INTERPRETATION_SCHEMA format, wrapped in ```json code blocks."""
 
 PROMPT_TEMPLATE = """
 <context>
