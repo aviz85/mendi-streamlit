@@ -1,18 +1,16 @@
 INTERPRETATION_SCHEMA = {
-    "main_themes": [
+    "letter": "string",
+    "original_text": "string",
+    "difficult_words": [
         {
-            "theme": "string",
+            "word": "string",
             "explanation": "string"
         }
     ],
-    "literary_devices": [
+    "detailed_interpretation": [
         {
-            "device": "string",
-            "example": "string",
-            "effect": "string"
+            "quote": "string",
+            "explanation": "string"
         }
-    ],
-    "deeper_meaning": "string",
-    "historical_context": "string",
-    "key_insights": ["string"]
+    ]
 }

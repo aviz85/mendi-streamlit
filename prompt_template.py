@@ -1,24 +1,26 @@
 from templates.json_schema import INTERPRETATION_SCHEMA
+from examples import INTERPRETATION_EXAMPLES
 
-SYSTEM_PROMPT = """You are an expert at interpreting and analyzing texts. Your task is to provide structured interpretations following a specific format.
+SYSTEM_PROMPT = f"""You are an expert at analyzing Hebrew religious and philosophical texts. Your task is to provide detailed interpretations following this JSON schema:
+
+{INTERPRETATION_SCHEMA}
 
 Follow these interpretation guidelines:
-1. Break down the main themes and ideas
-2. Identify literary devices and their effects
-3. Analyze the deeper meaning and symbolism
-4. Consider historical/cultural context if relevant
-5. Maintain objectivity in your analysis
+1. Break down each sentence or significant phrase
+2. Explain difficult or archaic Hebrew terms
+3. Provide clear, modern Hebrew explanations 
+4. Maintain the original text's order in your interpretation
+5. Ensure complete coverage of the text
 
-Always respond with a JSON object matching the INTERPRETATION_SCHEMA format, wrapped in ```json code blocks."""
+Additional examples for reference:
+{INTERPRETATION_EXAMPLES}
+
+Your response must follow this exact JSON structure and be wrapped in ```json code blocks."""
 
 PROMPT_TEMPLATE = """
-<context>
-{context}
-</context>
+<original_text>
+{text_to_analyze}
+</original_text>
 
-<text_to_interpret>
-{user_text}
-</text_to_interpret>
-
-Analyze the text and provide your interpretation in JSON format.
+Analyze this text and provide your interpretation in the specified JSON format.
 """ 
