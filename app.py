@@ -4,6 +4,7 @@ import json
 from prompt_template import SYSTEM_PROMPT, PROMPT_TEMPLATE
 from examples import INTERPRETATION_EXAMPLES
 from services.text_generator import create_interpretation_txt
+from services.docx_generator import create_interpretation_docx
 import io
 import re
 
@@ -105,14 +106,16 @@ def main():
                 st.write(f"**פירוש**: {detail['explanation']}")
                 st.markdown("---")
             
-            # Add download button outside the interpretation block
-            text_content = create_interpretation_txt(st.session_state.interpretation)
+            # Create docx file in memory
+            doc = create_interpretation_docx(st.session_state.interpretation)
+            bio = io.BytesIO()
+            doc.save(bio)
             
             st.download_button(
-                label="הורד כקובץ טקסט",
-                data=text_content.encode('utf-8'),
-                file_name="interpretation.txt",
-                mime="text/plain"
+                label="הורד כקובץ Word",
+                data=bio.getvalue(),
+                file_name="interpretation.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
 
 if __name__ == "__main__":
