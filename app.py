@@ -53,6 +53,10 @@ def main():
 
     st.title("מנדי - עוזר אישי לכתיבת פירוש תורני")
     
+    # Initialize session state for interpretation
+    if 'interpretation' not in st.session_state:
+        st.session_state.interpretation = None
+    
     col1, col2 = st.columns([1, 1])
     
     with col1:
@@ -63,35 +67,36 @@ def main():
                 return
                 
             with st.spinner("מנתח את הטקסט..."):
-                interpretation = get_interpretation(user_text)
-                
-                if interpretation:
-                    with col2:
-                        st.subheader("טקסט מקורי")
-                        st.write(interpretation["original_text"])
-                        
-                        st.subheader("אות")
-                        st.write(interpretation["letter"])
-                        
-                        st.subheader("מילים קשות")
-                        for word in interpretation["difficult_words"]:
-                            st.write(f"**{word['word']}**: {word['explanation']}")
-                        
-                        st.subheader("פירוש מפורט")
-                        for detail in interpretation["detailed_interpretation"]:
-                            st.write(f"**ציטוט**: {detail['quote']}")
-                            st.write(f"**פירוש**: {detail['explanation']}")
-                            st.markdown("---")
-                        
-                        # Add download button for txt
-                        text_content = create_interpretation_txt(interpretation)
-                        
-                        st.download_button(
-                            label="הורד כקובץ טקסט",
-                            data=text_content.encode('utf-8'),
-                            file_name="interpretation.txt",
-                            mime="text/plain"
-                        )
+                st.session_state.interpretation = get_interpretation(user_text)
+    
+    # Display interpretation if exists
+    if st.session_state.interpretation:
+        with col2:
+            st.subheader("טקסט מקורי")
+            st.write(st.session_state.interpretation["original_text"])
+            
+            st.subheader("אות")
+            st.write(st.session_state.interpretation["letter"])
+            
+            st.subheader("מילים קשות")
+            for word in st.session_state.interpretation["difficult_words"]:
+                st.write(f"**{word['word']}**: {word['explanation']}")
+            
+            st.subheader("פירוש מפורט")
+            for detail in st.session_state.interpretation["detailed_interpretation"]:
+                st.write(f"**ציטוט**: {detail['quote']}")
+                st.write(f"**פירוש**: {detail['explanation']}")
+                st.markdown("---")
+            
+            # Add download button outside the interpretation block
+            text_content = create_interpretation_txt(st.session_state.interpretation)
+            
+            st.download_button(
+                label="הורד כקובץ טקסט",
+                data=text_content.encode('utf-8'),
+                file_name="interpretation.txt",
+                mime="text/plain"
+            )
 
 if __name__ == "__main__":
     main() 
