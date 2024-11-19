@@ -5,6 +5,7 @@ from prompt_template import SYSTEM_PROMPT, PROMPT_TEMPLATE
 from examples import INTERPRETATION_EXAMPLES
 from services.text_generator import create_interpretation_txt
 import io
+import re
 
 def get_interpretation(text):
     api_key = st.secrets["ANTHROPIC_API_KEY"]
@@ -23,15 +24,31 @@ def get_interpretation(text):
         }]
     )
     
-    # Extract JSON from response
+    # Extract JSON from response using regex
     try:
         response_text = message.content[0].text
-        json_start = response_text.find('```json\n') + 8
-        json_end = response_text.find('```', json_start)
-        json_str = response_text[json_start:json_end].strip()
+        
+        # Try to find JSON between code blocks first
+        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+        
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            # Fallback: try to find any JSON object
+            json_match = re.search(r'\{(?:[^{}]|(?R))*\}', response_text)
+            if json_match:
+                json_str = json_match.group(0)
+            else:
+                raise ValueError("No JSON found in response")
+        
+        # Clean up any potential markdown artifacts
+        json_str = re.sub(r'\\n', '\n', json_str)
+        json_str = json_str.strip()
+        
         return json.loads(json_str)
     except Exception as e:
         st.error(f"Failed to parse response: {e}")
+        st.write("Raw response:", response_text)  # Debug output
         return None
 
 def main():
