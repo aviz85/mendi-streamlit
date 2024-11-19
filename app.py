@@ -52,7 +52,6 @@ def main():
     """, unsafe_allow_html=True)
 
     st.title("מנדי - עוזר אישי לכתיבת פירוש תורני")
-    st.write("הכנס קטע טקסט לניתוח ופירוש מעמיק")
     
     col1, col2 = st.columns([1, 1])
     
