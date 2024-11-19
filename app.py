@@ -17,7 +17,7 @@ def get_interpretation(text):
     client = anthropic.Anthropic(api_key=api_key)
     
     message = client.messages.create(
-        model="claude-3-5-haiku-latest",
+        model="claude-3-5-sonnet-latest",
         max_tokens=4096,
         system=SYSTEM_PROMPT,
         messages=[{
