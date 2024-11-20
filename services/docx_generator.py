@@ -39,8 +39,7 @@ def create_interpretation_docx(interpretation):
     text_para.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
     text_para.add_run(interpretation["original_text"])
     
-    # Spacing
-    doc.add_paragraph()
+    # Single line spacing
     doc.add_paragraph()
     
     # Difficult words
@@ -55,8 +54,7 @@ def create_interpretation_docx(interpretation):
             if i < len(interpretation["difficult_words"]) - 1:
                 words_para.add_run(" ; ")
     
-    # Spacing
-    doc.add_paragraph()
+    # Single line spacing
     doc.add_paragraph()
     
     # Detailed interpretation
