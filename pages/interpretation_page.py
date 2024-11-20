@@ -77,29 +77,14 @@ def display_interpretation(interpretation):
     for detail in interpretation["detailed_interpretation"]:
         st.write(f"**{detail['quote']}**: {detail['explanation']}")
         st.markdown("---")
+    # Add download button
+    doc = create_interpretation_docx(interpretation)
+    bio = io.BytesIO()
+    doc.save(bio)
     
-    # Add download buttons
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Text download
-        text_content = create_interpretation_txt(interpretation)
-        st.download_button(
-            label="הורד כקובץ טקסט",
-            data=text_content.encode('utf-8'),
-            file_name="interpretation.txt",
-            mime="text/plain"
-        )
-    
-    with col2:
-        # Word document download
-        doc = create_interpretation_docx(interpretation)
-        bio = io.BytesIO()
-        doc.save(bio)
-        
-        st.download_button(
-            label="הורד כקובץ Word",
-            data=bio.getvalue(),
-            file_name="interpretation.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+    st.download_button(
+        label="הורד כקובץ Word",
+        data=bio.getvalue(),
+        file_name="interpretation.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )

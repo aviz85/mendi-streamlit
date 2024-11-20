@@ -10,9 +10,6 @@ def get_interpretation(text):
     model_name = st.secrets["MODEL_NAME"]
     client = anthropic.Anthropic(api_key=api_key)
     
-    # Initialize usage logger
-    usage_logger = UsageLogger()
-    
     message = client.messages.create(
         model=model_name,
         max_tokens=4096,
@@ -25,34 +22,44 @@ def get_interpretation(text):
         }]
     )
     
-    # Log usage after getting response
-    usage_logger.log_usage(
-        model_name=message.model,
-        usage=message.usage
-    )
+    # Log usage
+    try:
+        usage = {
+            "input_tokens": message.usage.input_tokens,
+            "output_tokens": message.usage.output_tokens
+        }
+        usage_logger = UsageLogger()
+        usage_logger.log_usage(
+            model_name=message.model,
+            usage=usage
+        )
+    except Exception as e:
+        print(f"Usage logging error: {e}")
     
-    # Extract JSON from response using regex
+    # Parse response
     try:
         response_text = message.content[0].text
         
-        # Try to find JSON between code blocks first
-        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+        # Extract JSON from code block
+        json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL | re.MULTILINE)
         
+        if not json_match:
+            # Try without json tag
+            json_match = re.search(r'```\s*(\{.*?\})\s*```', response_text, re.DOTALL | re.MULTILINE)
+            
+        if not json_match:
+            # Try raw JSON
+            json_match = re.search(r'\{[^{]*"letter":[^{]*"original_text":[^}]*\}', response_text, re.DOTALL)
+            
         if json_match:
             json_str = json_match.group(1)
-        else:
-            # Fallback: try to find any JSON object
-            json_match = re.search(r'\{(?:[^{}]|(?R))*\}', response_text)
-            if json_match:
-                json_str = json_match.group(0)
-            else:
-                raise ValueError("No JSON found in response")
-        
-        # Clean up any potential markdown artifacts
-        json_str = re.sub(r'\\n', '\n', json_str)
-        json_str = json_str.strip()
-        
-        return json.loads(json_str)
+            # Clean up newlines and spaces
+            json_str = re.sub(r'\s+', ' ', json_str).strip()
+            return json.loads(json_str)
+            
+        st.error("לא נמצא פלט תקין מהמודל. אנא נסה שנית.")
+        print("Raw response:", response_text)
+        return None
     except Exception as e:
         st.error(f"Failed to parse response: {e}")
         st.write("Raw response:", response_text)  # Debug output

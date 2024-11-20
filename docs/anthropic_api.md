@@ -355,3 +355,6 @@ anthropic.Anthropic().messages.create(
   "type": "message",
   "usage": {
     "input_tokens": 2095,
+    "output_tokens": 503
+  }
+}

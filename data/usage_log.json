@@ -1,0 +1,50 @@
+[
+  {
+    "timestamp": "2024-11-20T03:12:27.484640",
+    "model": "claude-3-5-sonnet-20241022",
+    "model_type": "3-5-sonnet",
+    "input_tokens": 16858,
+    "output_tokens": 70,
+    "cost_usd": 0.05162400000000001
+  },
+  {
+    "timestamp": "2024-11-20T03:13:12.015016",
+    "model": "claude-3-5-sonnet-20241022",
+    "model_type": "3-5-sonnet",
+    "input_tokens": 16859,
+    "output_tokens": 245,
+    "cost_usd": 0.054251999999999995
+  },
+  {
+    "timestamp": "2024-11-20T03:14:13.765483",
+    "model": "claude-3-5-sonnet-20241022",
+    "model_type": "3-5-sonnet",
+    "input_tokens": 16859,
+    "output_tokens": 210,
+    "cost_usd": 0.053727
+  },
+  {
+    "timestamp": "2024-11-20T03:14:37.767325",
+    "model": "claude-3-5-sonnet-20241022",
+    "model_type": "3-5-sonnet",
+    "input_tokens": 16859,
+    "output_tokens": 194,
+    "cost_usd": 0.053487
+  },
+  {
+    "timestamp": "2024-11-20T03:15:42.240711",
+    "model": "claude-3-5-sonnet-20241022",
+    "model_type": "3-5-sonnet",
+    "input_tokens": 16857,
+    "output_tokens": 230,
+    "cost_usd": 0.054021000000000007
+  },
+  {
+    "timestamp": "2024-11-20T03:19:30.249996",
+    "model": "claude-3-5-sonnet-20241022",
+    "model_type": "3-5-sonnet",
+    "input_tokens": 16860,
+    "output_tokens": 281,
+    "cost_usd": 0.054794999999999996
+  }
+]
