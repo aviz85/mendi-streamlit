@@ -4,12 +4,10 @@ import os
 from services.nikud_mapper import process_docx
 
 def render_nikud_page():
-    st.header("ניקוד אוטומטי")
     
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        st.subheader("קבצי מקור")
         source_file = st.file_uploader(
             "העלה קובץ מקור מנוקד (Word)",
             type=['docx'],
