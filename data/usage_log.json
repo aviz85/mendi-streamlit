@@ -46,5 +46,29 @@
     "input_tokens": 16860,
     "output_tokens": 281,
     "cost_usd": 0.054794999999999996
+  },
+  {
+    "timestamp": "2024-11-20T03:50:35.228748",
+    "model": "claude-3-5-sonnet-20241022",
+    "model_type": "3-5-sonnet",
+    "input_tokens": 16872,
+    "output_tokens": 218,
+    "cost_usd": 0.05388600000000001
+  },
+  {
+    "timestamp": "2024-12-02T10:49:04.393953",
+    "model": "claude-3-5-sonnet-20241022",
+    "model_type": "3-5-sonnet",
+    "input_tokens": 16857,
+    "output_tokens": 173,
+    "cost_usd": 0.053166000000000005
+  },
+  {
+    "timestamp": "2024-12-02T10:49:17.033220",
+    "model": "claude-3-5-sonnet-20241022",
+    "model_type": "3-5-sonnet",
+    "input_tokens": 16866,
+    "output_tokens": 234,
+    "cost_usd": 0.054107999999999996
   }
 ]
