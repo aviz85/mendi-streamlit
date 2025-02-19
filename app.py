@@ -3,15 +3,15 @@ from pages.nikud_page import render_nikud_page
 from pages.interpretation_page import render_interpretation_page
 from pages.logs_page import render_logs_page
 
+# Set basic page config - MUST BE FIRST
+st.set_page_config(
+    layout="wide",
+    initial_sidebar_state="collapsed",
+    page_title="מנדי - עוזר אישי לכתיבת פירוש תורני",
+    page_icon="📚"
+)
+
 def main():
-    # Set basic page config
-    st.set_page_config(
-        layout="wide",
-        initial_sidebar_state="collapsed",
-        page_title="מנדי - עוזר אישי לכתיבת פירוש תורני",
-        page_icon="📚"
-    )
-    
     # Minimal CSS just for RTL support
     st.markdown("""
         <style>
