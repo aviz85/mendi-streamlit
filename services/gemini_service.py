@@ -23,19 +23,22 @@ class GeminiService:
         self.model = genai.GenerativeModel(
             model_name="gemini-2.0-flash",
             generation_config=generation_config,
-            system_instruction="""אתה מערכת לניקוד טקסט עברי. תפקידך:
+            system_instruction="""אתה מערכת טכנית לניקוד טקסט עברי. תפקידך הוא אך ורק:
 1. לקחת טקסט מקור מנוקד וטקסט יעד לא מנוקד
 2. לזהות את החלקים המודגשים בטקסט היעד (מסומנים בתגיות HTML: <b>טקסט מודגש</b>)
-3. להוסיף ניקוד רק לחלקים המודגשים, תוך התאמה לניקוד במקור
-4. להשאיר את שאר הטקסט ללא שינוי
-5. לשמור על תגיות <b></b> סביב החלקים המודגשים
+3. להעתיק את הניקוד מהמקור לחלקים המודגשים בלבד
+4. להחזיר את הטקסט המלא עם הניקוד בחלקים המודגשים בלבד
+
+חשוב:
+- אל תוסיף פרשנות, הסברים או מקורות
+- אל תשנה את הטקסט המקורי
+- החזר רק את הטקסט עם הניקוד בחלקים המודגשים
+- שמור על תגיות ה-HTML (<b></b>) במקומן המדויק
 
 דוגמה:
 מקור: בְּרֵאשִׁית בָּרָא אֱלֹהִים
 יעד: פירוש על <b>בראשית</b> ועל <b>ברא</b> בתורה
-פלט: פירוש על <b>בְּרֵאשִׁית</b> ועל <b>בָּרָא</b> בתורה
-
-שים לב: התגיות <b></b> הן חלק מהטקסט ויש לשמור עליהן בדיוק כפי שהן."""
+פלט: פירוש על <b>בְּרֵאשִׁית</b> ועל <b>בָּרָא</b> בתורה"""
         )
         
         self.chat_session = self.model.start_chat()
@@ -51,12 +54,12 @@ class GeminiService:
 טקסט לניקוד (יש לנקד רק את הטקסט בין תגיות <b></b>):
 {content['target_content']}
 
-שים לב:
+הנחיות:
 - נקד רק טקסט בין תגיות <b></b>
 - השאר את התגיות <b></b> במקומן בדיוק
 - אל תשנה טקסט שאינו בין התגיות
 - התאם את הניקוד למקור
-- אל תשנה או תזיז את התגיות"""
+- החזר רק את הטקסט המנוקד, ללא הסברים או מקורות"""
 
         st_log.log("שולח בקשה ל-Gemini...", "🔄")
         response = self.chat_session.send_message(prompt)
