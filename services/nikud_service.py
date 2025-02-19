@@ -23,12 +23,40 @@ class NikudService:
         
         for para in doc.paragraphs:
             para_text = ""
+            current_bold_text = ""
+            last_was_bold = False
+            
             for run in para.runs:
+                current_text = run.text
+                
                 if run.bold:
-                    st_log.log(f"זיהיתי טקסט מודגש: {run.text}", "🔍")
-                    para_text += f"<b>{run.text}</b>"
+                    # If last run wasn't bold and this isn't just whitespace, start new bold section
+                    if not last_was_bold and current_text.strip():
+                        current_bold_text = current_text
+                    # If continuing bold section or this is just whitespace
+                    else:
+                        current_bold_text += current_text
+                    last_was_bold = True
                 else:
-                    para_text += run.text
+                    # If we were in bold section
+                    if last_was_bold:
+                        # Only add bold tags if there's actual content
+                        if current_bold_text.strip():
+                            st_log.log(f"זיהיתי טקסט מודגש: {current_bold_text.strip()}", "🔍")
+                            para_text += f"<b>{current_bold_text}</b>"
+                        else:
+                            para_text += current_bold_text
+                        current_bold_text = ""
+                    para_text += current_text
+                    last_was_bold = False
+            
+            # Handle any remaining bold text at end of paragraph
+            if last_was_bold and current_bold_text.strip():
+                st_log.log(f"זיהיתי טקסט מודגש: {current_bold_text.strip()}", "🔍")
+                para_text += f"<b>{current_bold_text}</b>"
+            elif last_was_bold:
+                para_text += current_bold_text
+                
             text += para_text + "\n"
             
         return text, doc

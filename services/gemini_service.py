@@ -2,11 +2,36 @@ import os
 import google.generativeai as genai
 from typing import Dict
 import logging
+import sys
 from .usage_logger import streamlit_logger as st_log
+
+def setup_logger():
+    """Setup detailed logging to both file and console"""
+    logger = logging.getLogger('GeminiService')
+    logger.setLevel(logging.INFO)
+    
+    # File handler
+    fh = logging.FileHandler('gemini_service.log')
+    fh.setLevel(logging.INFO)
+    
+    # Console handler
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(logging.INFO)
+    
+    # Formatter
+    formatter = logging.Formatter('%(asctime)s - %(message)s')
+    fh.setFormatter(formatter)
+    ch.setFormatter(formatter)
+    
+    # Add handlers
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+    
+    return logger
 
 class GeminiService:
     def __init__(self):
-        self.logger = logging.getLogger(__name__)
+        self.logger = setup_logger()
         genai.configure(api_key=os.environ["GEMINI_API_KEY"])
         
         st_log.log("מאתחל את שירות Gemini...", "🔄")
@@ -24,22 +49,32 @@ class GeminiService:
             model_name="gemini-2.0-flash",
             generation_config=generation_config,
             system_instruction="""אתה מערכת טכנית לניקוד טקסט עברי. תפקידך הוא אך ורק:
-1. לקחת טקסט מקור מנוקד וטקסט יעד לא מנוקד
-2. לזהות את החלקים המודגשים בטקסט היעד (מסומנים בתגיות <b></b>)
-3. להעתיק את הניקוד מהמקור רק לחלקים שמסומנים בתגיות <b></b>
-4. להחזיר את הטקסט המלא כאשר רק החלקים בתוך תגיות <b></b> מנוקדים
+1. לקבל טקסט מקור מנוקד (החלק העיקרי בלבד)
+2. לקבל סקשן שלם של טקסט יעד (כולל כותרת וכל התוכן)
+3. להחזיר את הסקשן במלואו, בדיוק כפי שהוא, עם שני שינויים בלבד:
+   א. להעתיק את הניקוד מהמקור לחלקים המודגשים בלבד (בין תגיות <b></b>)
+   ב. להשאיר את שאר הטקסט ללא ניקוד
 
 חשוב מאוד:
-- אל תשנה את סימוני ההדגשה - השאר את תגיות <b></b> בדיוק איפה שהן
-- נקד רק טקסט שנמצא בין תגיות <b></b>
-- אל תנקד טקסט שאינו בין תגיות <b></b>
-- אל תוסיף או תסיר תגיות <b></b>
-- החזר רק את הטקסט עם הניקוד בחלקים המודגשים
+- העתק את כל הסקשן במדויק, מילה במילה
+- אל תשנה שום דבר מלבד הוספת ניקוד לחלקים המודגשים
+- שמור על כל תגיות ה-HTML (<b></b>) במקומן המדויק
+- אל תוסיף ואל תסיר שום תגית
+- אל תשנה את סדר המילים או התוכן
 
 דוגמה:
-מקור: בְּרֵאשִׁית בָּרָא אֱלֹהִים
-יעד: פירוש על <b>בראשית</b> ועל <b>ברא</b> בתורה
-פלט: פירוש על <b>בְּרֵאשִׁית</b> ועל <b>בָּרָא</b> בתורה"""
+[מקור]
+בְּרֵאשִׁית בָּרָא אֱלֹהִים
+
+[סקשן יעד]
+פרק א
+פירוש על <b>בראשית</b> ועל <b>ברא</b> בתורה
+הסבר נוסף כאן...
+
+[פלט]
+פרק א
+פירוש על <b>בְּרֵאשִׁית</b> ועל <b>בָּרָא</b> בתורה
+הסבר נוסף כאן..."""
         )
         
         self.chat_session = self.model.start_chat()
@@ -49,25 +84,28 @@ class GeminiService:
         """Process content through Gemini to add nikud"""
         st_log.log(f"מעבד חלק: {content['target_header']}", "📝")
         
-        prompt = f"""מקור (עם ניקוד):
+        prompt = f"""[טקסט מקור (עם ניקוד) - החלק העיקרי]:
 {content['source_content']}
 
-טקסט לניקוד (נקד רק את הטקסט בין תגיות <b></b>):
+[סקשן יעד מלא - יש לשכתב במדויק עם ניקוד בחלקים המודגשים בלבד]:
 {content['target_content']}
 
 הנחיות חשובות:
-- נקד רק את הטקסט שנמצא בין תגיות <b></b>
-- אל תנקד טקסט שאינו בין תגיות <b></b>
-- אל תשנה את מיקום תגיות <b></b>
-- אל תוסיף או תסיר תגיות <b></b>
-- החזר את הטקסט המלא כשרק החלקים המודגשים מנוקדים"""
+1. העתק את כל הסקשן הנ"ל במדויק, מילה במילה
+2. הוסף ניקוד רק לטקסט שנמצא בין תגיות <b></b>
+3. השאר את כל שאר הטקסט בדיוק כפי שהוא
+4. שמור על כל תגיות ה-HTML במקומן המדויק
+5. החזר את הסקשן המלא בדיוק כפי שהוא, עם ניקוד רק בחלקים המודגשים"""
 
+        # Log full prompt with clear separators
+        self.logger.info("\n" + "="*50 + "\nFULL GEMINI PROMPT:\n" + "="*50 + "\n" + prompt)
+        
         st_log.log("שולח בקשה ל-Gemini...", "🔄")
         response = self.chat_session.send_message(prompt)
-        st_log.log(f"התקבלה תשובה מ-Gemini", "✨")
         
-        # Debug log
-        st_log.log("=== תשובת Gemini ===", "🤖")
-        st_log.log(response.text[:200] + "...", "📝")
+        # Log full response with clear separators
+        self.logger.info("\n" + "="*50 + "\nFULL GEMINI RESPONSE:\n" + "="*50 + "\n" + response.text)
+        
+        st_log.log(f"התקבלה תשובה מ-Gemini", "✨")
         
         return response.text 
