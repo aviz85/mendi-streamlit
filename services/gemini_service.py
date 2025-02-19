@@ -20,7 +20,17 @@ class GeminiService:
         self.model = genai.GenerativeModel(
             model_name="gemini-2.0-flash",
             generation_config=generation_config,
-            system_instruction="לפניך טקסט מנוקד וטקסט עם פירוש לא מנוקד. קח את המקור המנוקד ותשכתב את הפירוש הלא מנוקד כאשר כל פעם שמופיע חלק מהמקור - תנקד. בפירוש בהתחלה מופיע כל הפסקה המלאה של המקור שיש לנקד, אח״כ מופיעים ביטויים חלקיים ופירוש, רק הביטויים החלקיים מהמקור יש לנקד."
+            system_instruction="""אתה מערכת לניקוד טקסט עברי. תפקידך:
+1. לקחת טקסט מקור מנוקד וטקסט יעד לא מנוקד
+2. לזהות את החלקים המודגשים בטקסט היעד (מסומנים ב-**)
+3. להוסיף ניקוד רק לחלקים המודגשים, תוך התאמה לניקוד במקור
+4. להשאיר את שאר הטקסט ללא שינוי
+5. לשמור על הסימון ** סביב החלקים המודגשים
+
+דוגמה:
+מקור: בְּרֵאשִׁית בָּרָא אֱלֹהִים
+יעד: פירוש על **בראשית** ועל **ברא** בתורה
+פלט: פירוש על **בְּרֵאשִׁית** ועל **בָּרָא** בתורה"""
         )
         
         self.chat_session = self.model.start_chat()
@@ -30,11 +40,17 @@ class GeminiService:
         """Process content through Gemini to add nikud"""
         self.logger.info(f"📝 מעבד חלק {content['target_header']} עם Gemini")
         
-        prompt = f"""מקור:
+        prompt = f"""מקור (עם ניקוד):
 {content['source_content']}
 
-פירוש:
-{content['target_content']}"""
+טקסט לניקוד (יש לנקד רק את החלקים המודגשים ב-**):
+{content['target_content']}
+
+שים לב:
+- נקד רק טקסט בין ** **
+- השאר את סימני ** במקומם
+- אל תשנה טקסט שאינו מודגש
+- התאם את הניקוד למקור"""
 
         response = self.chat_session.send_message(prompt)
         

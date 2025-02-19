@@ -24,7 +24,12 @@ def test_files(tmp_path):
     
     target_doc = Document()
     target_doc.add_paragraph("פרק א").bold = True
-    target_doc.add_paragraph("בראשית ברא אלהים את השמים ואת הארץ")
+    para = target_doc.add_paragraph()
+    para.add_run("פירוש על ")
+    para.add_run("בראשית").bold = True
+    para.add_run(" ועל ")
+    para.add_run("ברא").bold = True
+    para.add_run(" בתורה")
     target_path = tmp_path / "target.docx"
     target_doc.save(target_path)
     
@@ -47,7 +52,10 @@ def test_process_files(service, test_files):
     
     # Basic verification
     assert "פרק א" in output_text
-    assert "בְּרֵאשִׁית" in output_text  # Should contain nikud
+    assert "**בְּרֵאשִׁית**" in output_text  # Should contain nikud in bold
+    assert "**בָּרָא**" in output_text  # Should contain nikud in bold
+    assert "פירוש על" in output_text  # Should not be modified
+    assert "בתורה" in output_text  # Should not be modified
     
     # Verify bold formatting preserved
     assert any(run.bold for para in output_doc.paragraphs for run in para.runs)
