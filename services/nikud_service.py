@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Dict
 from docx import Document
 import re
 

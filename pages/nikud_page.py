@@ -6,66 +6,40 @@ from services.nikud_service import NikudService
 from services.usage_logger import streamlit_logger
 
 def render_nikud_page():
+    st.title("ניקוד אוטומטי")
     
-    col1, col2 = st.columns([1, 1])
+    # Create placeholder for logs
+    log_placeholder = st.empty()
+    streamlit_logger.placeholder = log_placeholder
     
-    with col1:
-        source_file = st.file_uploader(
-            "העלה קובץ מקור מנוקד (Word)",
-            type=['docx'],
-            key="source_nikud"
-        )
-        
-        input_file = st.file_uploader(
-            "העלה קובץ לניקוד (Word)",
-            type=['docx'],
-            key="input_nikud"
-        )
-        
-        if st.button("בצע ניקוד אוטומטי"):
-            if not source_file or not input_file:
-                st.error("יש להעלות את שני הקבצים")
-                return
-                
-            try:
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    # Save uploaded files
-                    source_path = os.path.join(temp_dir, "source.docx")
-                    input_path = os.path.join(temp_dir, "input.docx")
-                    output_path = os.path.join(temp_dir, "output.docx")
-                    
-                    with open(source_path, 'wb') as f:
-                        f.write(source_file.getvalue())
-                    with open(input_path, 'wb') as f:
-                        f.write(input_file.getvalue())
-                    
-                    # Process files
-                    with st.spinner("מבצע ניקוד אוטומטי..."):
-                        mapper = NikudMapper(bold_only=True)
-                        mapper.process_docx(input_path, output_path, source_path)
-                    
-                    # Read output file
-                    with open(output_path, 'rb') as f:
-                        output_data = f.read()
-                    
-                    # Store in session state for download
-                    st.session_state.nikud_output = output_data
-                    st.session_state.show_nikud_download = True
-                    
-                    st.success("הניקוד הושלם בהצלחה!")
-                    
-            except Exception as e:
-                st.error(f"אירעה שגיאה בעיבוד הקבצים: {str(e)}")
+    # Clear previous logs
+    streamlit_logger.clear()
     
-    with col2:
-        st.subheader("קובץ מנוקד")
-        if st.session_state.get('show_nikud_download', False):
-            st.download_button(
-                label="הורד קובץ מנוקד",
-                data=st.session_state.nikud_output,
-                file_name="output_nikud.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            )
+    # File upload
+    source_file = st.file_uploader("קובץ מקור (עם ניקוד)", type=["docx"])
+    target_file = st.file_uploader("קובץ יעד (ללא ניקוד)", type=["docx"])
+    
+    if source_file and target_file:
+        if st.button("התחל ניקוד"):
+            service = NikudService()
+            
+            # Save uploaded files
+            with open("temp_source.docx", "wb") as f:
+                f.write(source_file.getvalue())
+            with open("temp_target.docx", "wb") as f:
+                f.write(target_file.getvalue())
+            
+            # Process files
+            service.process_files("temp_source.docx", "temp_target.docx", "output.docx")
+            
+            # Offer download
+            with open("output.docx", "rb") as f:
+                st.download_button(
+                    label="הורד קובץ מנוקד",
+                    data=f.read(),
+                    file_name="output.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
 
 def show():
     st.title("ניקוד אוטומטי")

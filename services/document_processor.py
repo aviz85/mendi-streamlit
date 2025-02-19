@@ -70,6 +70,12 @@ class DocumentProcessor:
         # Keep spaces
         return text
 
+    def _calculate_similarity(self, text1: str, text2: str) -> float:
+        """Calculate similarity between two texts using character ratio"""
+        longer = max(len(text1), len(text2))
+        shorter = min(len(text1), len(text2))
+        return shorter / longer if longer > 0 else 0
+
     def find_matching_sections(self, source_sections: List[Section], 
                              target_sections: List[Section],
                              similarity_threshold: float = 0.9) -> List[Tuple[Section, Section]]:
