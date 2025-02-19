@@ -2,7 +2,9 @@ import json
 from datetime import datetime
 import re
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
+import logging
+import streamlit as st
 
 class UsageLogger:
     PRICING = {
@@ -86,3 +88,26 @@ class UsageLogger:
             stats[model]["total_tokens"] += log["input_tokens"] + log["output_tokens"]
             stats[model]["cost"] += log["cost_usd"]
         return stats
+
+class StreamlitLogger:
+    def __init__(self, placeholder: Optional[st.empty] = None):
+        self.placeholder = placeholder or st.empty()
+        self.logs = []
+        
+    def log(self, message: str, emoji: str = "ℹ️"):
+        """Add log message with emoji and display in Streamlit"""
+        log_entry = f"{emoji} {message}"
+        self.logs.append(log_entry)
+        self._update_display()
+        
+    def _update_display(self):
+        """Update the Streamlit display with all logs"""
+        self.placeholder.markdown("\n".join(self.logs))
+        
+    def clear(self):
+        """Clear all logs"""
+        self.logs = []
+        self.placeholder.empty()
+
+# Global logger instance
+streamlit_logger = StreamlitLogger()

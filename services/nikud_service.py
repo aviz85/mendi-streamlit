@@ -6,6 +6,7 @@ import re
 
 from .document_processor import DocumentProcessor
 from .gemini_service import GeminiService
+from .usage_logger import streamlit_logger as st_log
 
 class NikudService:
     def __init__(self):
@@ -60,9 +61,10 @@ class NikudService:
 
     def process_files(self, source_path: str, target_path: str, output_path: str):
         """Process source and target files to add nikud"""
-        self.logger.info("🚀 מתחיל תהליך הוספת ניקוד")
+        st_log.log("מתחיל תהליך הוספת ניקוד", "🚀")
         
         # Read files
+        st_log.log("קורא קבצים...", "📂")
         source_text, source_doc = self._read_docx(source_path)
         target_text, target_doc = self._read_docx(target_path)
         
@@ -74,6 +76,7 @@ class NikudService:
         matches = self.doc_processor.find_matching_sections(source_sections, target_sections)
         
         # Process each match with Gemini
+        st_log.log("מעבד חלקים...", "⚙️")
         processed_sections = {}
         for source_section, target_section in matches:
             content = self.doc_processor.prepare_for_nikud(source_section, target_section)
@@ -81,6 +84,7 @@ class NikudService:
             processed_sections[target_section.header] = processed_content
             
         # Reconstruct document
+        st_log.log("מרכיב מחדש את המסמך...", "🔄")
         final_content = []
         for section in target_sections:
             if section.header in processed_sections:
@@ -90,7 +94,7 @@ class NikudService:
                 
         # Write output
         self._write_docx('\n'.join(final_content), target_doc, output_path)
-        self.logger.info("✨ תהליך הוספת הניקוד הושלם בהצלחה")
+        st_log.log("המסמך נשמר בהצלחה", "💾")
 
     def add_nikud(self, text: str) -> str:
         """

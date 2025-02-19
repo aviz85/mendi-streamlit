@@ -2,11 +2,14 @@ import os
 import google.generativeai as genai
 from typing import Dict
 import logging
+from .usage_logger import streamlit_logger as st_log
 
 class GeminiService:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+        
+        st_log.log("מאתחל את שירות Gemini...", "🔄")
         
         # Configure Gemini
         generation_config = {
@@ -34,11 +37,11 @@ class GeminiService:
         )
         
         self.chat_session = self.model.start_chat()
-        self.logger.info("🤖 שירות Gemini אותחל")
+        st_log.log("שירות Gemini מוכן", "✅")
 
     def add_nikud(self, content: Dict) -> str:
         """Process content through Gemini to add nikud"""
-        self.logger.info(f"📝 מעבד חלק {content['target_header']} עם Gemini")
+        st_log.log(f"מעבד חלק: {content['target_header']}", "📝")
         
         prompt = f"""מקור (עם ניקוד):
 {content['source_content']}
@@ -52,7 +55,8 @@ class GeminiService:
 - אל תשנה טקסט שאינו מודגש
 - התאם את הניקוד למקור"""
 
+        st_log.log("שולח בקשה ל-Gemini...", "🔄")
         response = self.chat_session.send_message(prompt)
+        st_log.log(f"התקבלה תשובה מ-Gemini", "✨")
         
-        self.logger.info(f"✅ עיבוד חלק {content['target_header']} הושלם")
         return response.text 

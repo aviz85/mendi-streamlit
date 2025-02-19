@@ -1,6 +1,7 @@
 import re
 from typing import List, Dict, Tuple, Optional
 import logging
+from .usage_logger import streamlit_logger as st_log
 
 class Section:
     def __init__(self, header: str, content: str):
@@ -41,7 +42,7 @@ class DocumentProcessor:
         current_header = ""
         current_content = []
         
-        self.logger.info("🔍 מתחיל לפצל את המסמך לחלקים")
+        st_log.log("מפצל את המסמך לחלקים...", "📑")
         
         lines = text.split('\n')
         for line in lines:
@@ -49,7 +50,7 @@ class DocumentProcessor:
                 # Save previous section if exists
                 if current_content:
                     sections.append(Section(current_header, '\n'.join(current_content)))
-                    self.logger.info(f"📑 נמצא חלק חדש המתחיל ב: {line}")
+                    st_log.log(f"נמצא חלק: {line}", "📎")
                 current_header = line
                 current_content = []
             else:
@@ -59,7 +60,7 @@ class DocumentProcessor:
         if current_content:
             sections.append(Section(current_header, '\n'.join(current_content)))
             
-        self.logger.info(f"✅ הפיצול הושלם. נמצאו {len(sections)} חלקים")
+        st_log.log(f"נמצאו {len(sections)} חלקים", "✅")
         return sections
 
     def normalize_text(self, text: str) -> str:
@@ -72,10 +73,10 @@ class DocumentProcessor:
     def find_matching_sections(self, source_sections: List[Section], 
                              target_sections: List[Section],
                              similarity_threshold: float = 0.9) -> List[Tuple[Section, Section]]:
-        """Find matching sections between source and target based on first sentence similarity"""
+        """Find matching sections between source and target"""
         matches = []
         
-        self.logger.info("🔄 מחפש התאמות בין חלקי המסמכים")
+        st_log.log("מחפש התאמות בין חלקי המסמכים...", "🔍")
         
         for source_section in source_sections:
             if not source_section.first_sentence:
@@ -92,11 +93,7 @@ class DocumentProcessor:
                     
                 target_normalized = self.normalize_text(target_section.first_sentence)
                 
-                # Calculate similarity (implement your preferred method)
-                # For now using simple character ratio
-                longer = max(len(source_normalized), len(target_normalized))
-                shorter = min(len(source_normalized), len(target_normalized))
-                score = shorter / longer if longer > 0 else 0
+                score = self._calculate_similarity(source_normalized, target_normalized)
                 
                 if score > best_score and score >= similarity_threshold:
                     best_score = score
@@ -104,9 +101,9 @@ class DocumentProcessor:
             
             if best_match:
                 matches.append((source_section, best_match))
-                self.logger.info(f"✨ נמצאה התאמה: {source_section.header} ↔️ {best_match.header}")
+                st_log.log(f"נמצאה התאמה: {source_section.header} ↔️ {best_match.header} ({best_score:.0%})", "✨")
         
-        self.logger.info(f"✅ נמצאו {len(matches)} התאמות")
+        st_log.log(f"נמצאו {len(matches)} התאמות", "✅")
         return matches
 
     def prepare_for_nikud(self, source_section: Section, target_section: Section) -> Dict:
