@@ -64,7 +64,6 @@ def render_nikud_page():
                     )
     
     with col2:
-        st.markdown("### לוג פעולות")
         log_container = st.container()
         with log_container:
             log_placeholder = st.empty()
