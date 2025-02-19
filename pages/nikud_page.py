@@ -1,7 +1,7 @@
 import streamlit as st
 import tempfile
 import os
-from services.nikud_mapper import process_docx
+from services.nikud_mapper import NikudMapper
 
 def render_nikud_page():
     
@@ -39,7 +39,8 @@ def render_nikud_page():
                     
                     # Process files
                     with st.spinner("מבצע ניקוד אוטומטי..."):
-                        process_docx(source_path, input_path, output_path)
+                        mapper = NikudMapper(bold_only=True)
+                        mapper.process_docx(input_path, output_path, source_path)
                     
                     # Read output file
                     with open(output_path, 'rb') as f:
