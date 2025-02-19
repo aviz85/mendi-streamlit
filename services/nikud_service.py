@@ -33,12 +33,12 @@ class NikudService:
         """Write content back to DOCX preserving all formatting"""
         doc = Document()
         
-        # Copy styles and section properties from template
+        # Copy styles from template
         doc.styles._element = template_doc.styles._element
-        doc.settings = template_doc.settings
         
-        # Copy document properties for RTL
-        doc._element.body.set('dir', 'rtl')
+        # Set RTL for document body
+        body_props = doc._element.body.get_or_add_sectPr()
+        body_props.set('bidi', '1')
         
         # Process content and write to doc
         paragraphs = content.split('\n')
@@ -47,9 +47,9 @@ class NikudService:
                 continue
                 
             para = doc.add_paragraph()
-            # Set RTL and right alignment as default
+            # Set RTL and right alignment
             para.paragraph_format.alignment = 2  # WD_ALIGN_PARAGRAPH.RIGHT
-            para._p.set('dir', 'rtl')
+            para._p.set('bidi', '1')  # RTL for paragraph
             
             # Split by bold markers - using non-greedy match for nested tags
             parts = re.split(r'(<b>.*?</b>)', para_text)
@@ -60,14 +60,10 @@ class NikudService:
                     text = re.search(r'<b>(.*?)</b>', part).group(1)
                     run = para.add_run(text)
                     run.bold = True
-                    # Preserve RTL for the run
-                    run._r.set('dir', 'rtl')
                 else:
                     # Regular text
                     if part.strip():
                         run = para.add_run(part)
-                        # Preserve RTL for the run
-                        run._r.set('dir', 'rtl')
         
         # Save with error handling
         try:
