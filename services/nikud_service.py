@@ -34,7 +34,7 @@ class NikudService:
         doc = Document()
         
         # Copy styles from template
-        doc.styles = template_doc.styles
+        doc.styles._element = template_doc.styles._element
         
         # Process content and write to doc
         paragraphs = content.split('\n')
@@ -54,10 +54,16 @@ class NikudService:
                     run.bold = True
                 else:
                     # Regular text
-                    para.add_run(part)
+                    if part.strip():
+                        para.add_run(part)
         
-        doc.save(output_path)
-        self.logger.info(f"💾 המסמך נשמר ב: {output_path}")
+        # Save with error handling
+        try:
+            doc.save(output_path)
+            st_log.log(f"המסמך נשמר בהצלחה: {output_path}", "💾")
+        except Exception as e:
+            st_log.log(f"שגיאה בשמירת המסמך: {str(e)}", "❌")
+            raise
 
     def process_files(self, source_path: str, target_path: str, output_path: str):
         """Process source and target files to add nikud"""

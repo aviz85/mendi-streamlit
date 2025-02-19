@@ -112,8 +112,15 @@ class DocumentProcessor:
         st_log.log(f"נמצאו {len(matches)} התאמות", "✅")
         return matches
 
+    def _count_bold_parts(self, text: str) -> int:
+        """Count number of bold parts in text (marked with **)"""
+        return len(re.findall(r'\*\*(.*?)\*\*', text))
+
     def prepare_for_nikud(self, source_section: Section, target_section: Section) -> Dict:
         """Prepare content for sending to Gemini for nikud"""
+        bold_count = self._count_bold_parts(target_section.content)
+        st_log.log(f"מזהה חלקים מודגשים בחלק {target_section.header}... זוהו {bold_count} חלקים", "🔍")
+        
         return {
             "source_content": source_section.main_content,
             "target_content": target_section.content,

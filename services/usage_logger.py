@@ -96,13 +96,14 @@ class StreamlitLogger:
         
     def log(self, message: str, emoji: str = "ℹ️"):
         """Add log message with emoji and display in Streamlit"""
-        log_entry = f"{emoji} {message}"
+        log_entry = f'<div class="log-entry">{emoji} {message}</div>'
         self.logs.append(log_entry)
         self._update_display()
         
     def _update_display(self):
         """Update the Streamlit display with all logs"""
-        self.placeholder.markdown("\n".join(self.logs))
+        html = f'<div class="log-container">{"".join(self.logs)}</div>'
+        self.placeholder.markdown(html, unsafe_allow_html=True)
         
     def clear(self):
         """Clear all logs"""
