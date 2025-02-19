@@ -39,35 +39,47 @@ def process_files(service: NikudService, source_file, target_file):
 def render_nikud_page():
     st.title("ניקוד אוטומטי")
     
+    # Initialize session state
+    if 'nikud_service' not in st.session_state:
+        st.session_state.nikud_service = NikudService()
+    if 'processed_file' not in st.session_state:
+        st.session_state.processed_file = None
+    
     # Create two columns
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        # File upload
-        source_file = st.file_uploader("קובץ מקור (עם ניקוד)", type=["docx"])
-        target_file = st.file_uploader("קובץ יעד (ללא ניקוד)", type=["docx"])
+        # File upload with session state
+        source_file = st.file_uploader("קובץ מקור (עם ניקוד)", type=["docx"], key="source_file")
+        target_file = st.file_uploader("קובץ יעד (ללא ניקוד)", type=["docx"], key="target_file")
         
         if source_file and target_file:
-            if st.button("התחל ניקוד", use_container_width=True):
-                service = NikudService()
-                
+            if st.button("התחל ניקוד", use_container_width=True, key="process_button"):
                 with st.spinner('מעבד קבצים...'):
                     try:
-                        output_data = process_files(service, source_file, target_file)
-                        
-                        st.download_button(
-                            label="הורד קובץ מנוקד",
-                            data=output_data,
-                            file_name="output.docx",
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            use_container_width=True
-                        )
+                        output_data = process_files(st.session_state.nikud_service, source_file, target_file)
+                        st.session_state.processed_file = output_data
                     except Exception as e:
                         st.error(f"שגיאה בעיבוד הקבצים: {str(e)}")
+            
+            # Show download button if we have processed file
+            if st.session_state.processed_file is not None:
+                st.download_button(
+                    label="הורד קובץ מנוקד",
+                    data=st.session_state.processed_file,
+                    file_name="output.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True,
+                    key="download_button"
+                )
     
     with col2:
         log_container = st.container()
         with log_container:
             log_placeholder = st.empty()
             streamlit_logger.placeholder = log_placeholder
-            streamlit_logger.clear()
+            # Only clear logs when starting new process
+            if st.session_state.get('last_source') != source_file or st.session_state.get('last_target') != target_file:
+                streamlit_logger.clear()
+                st.session_state.last_source = source_file
+                st.session_state.last_target = target_file
