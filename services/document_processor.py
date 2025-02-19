@@ -119,7 +119,13 @@ class DocumentProcessor:
     def prepare_for_nikud(self, source_section: Section, target_section: Section) -> Dict:
         """Prepare content for sending to Gemini for nikud"""
         bold_count = self._count_bold_parts(target_section.content)
-        st_log.log(f"מזהה חלקים מודגשים בחלק {target_section.header}... זוהו {bold_count} חלקים", "🔍")
+        st_log.log(f"מזהה חלקים מודגשים בחלק {target_section.header}... זוהו {bold_count} חלקים", "��")
+        
+        # Debug logs
+        st_log.log("=== תוכן מקור ===", "📄")
+        st_log.log(source_section.main_content[:200] + "...", "📝")
+        st_log.log("=== תוכן יעד ===", "📄")
+        st_log.log(target_section.content[:200] + "...", "📝")
         
         return {
             "source_content": source_section.main_content,

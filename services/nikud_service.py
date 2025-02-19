@@ -19,13 +19,17 @@ class NikudService:
         doc = Document(file_path)
         text = ""
         
+        st_log.log(f"קורא קובץ: {file_path}", "📖")
+        
         for para in doc.paragraphs:
+            para_text = ""
             for run in para.runs:
                 if run.bold:
-                    text += f"<b>{run.text}</b>"
+                    st_log.log(f"זיהיתי טקסט מודגש: {run.text}", "🔍")
+                    para_text += f"<b>{run.text}</b>"
                 else:
-                    text += run.text
-            text += "\n"
+                    para_text += run.text
+            text += para_text + "\n"
             
         return text, doc
     
