@@ -113,8 +113,8 @@ class DocumentProcessor:
         return matches
 
     def _count_bold_parts(self, text: str) -> int:
-        """Count number of bold parts in text (marked with **)"""
-        return len(re.findall(r'\*\*(.*?)\*\*', text))
+        """Count number of bold parts in text (marked with <b></b>)"""
+        return len(re.findall(r'<b>.*?</b>', text))
 
     def prepare_for_nikud(self, source_section: Section, target_section: Section) -> Dict:
         """Prepare content for sending to Gemini for nikud"""

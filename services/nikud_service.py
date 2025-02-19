@@ -22,7 +22,7 @@ class NikudService:
         for para in doc.paragraphs:
             for run in para.runs:
                 if run.bold:
-                    text += f"**{run.text}**"
+                    text += f"<b>{run.text}</b>"
                 else:
                     text += run.text
             text += "\n"
@@ -30,11 +30,15 @@ class NikudService:
         return text, doc
     
     def _write_docx(self, content: str, template_doc: Document, output_path: str):
-        """Write content back to DOCX preserving bold formatting"""
+        """Write content back to DOCX preserving all formatting"""
         doc = Document()
         
-        # Copy styles from template
+        # Copy styles and section properties from template
         doc.styles._element = template_doc.styles._element
+        doc.settings = template_doc.settings
+        
+        # Copy document properties for RTL
+        doc._element.body.set('dir', 'rtl')
         
         # Process content and write to doc
         paragraphs = content.split('\n')
@@ -43,19 +47,27 @@ class NikudService:
                 continue
                 
             para = doc.add_paragraph()
+            # Set RTL and right alignment as default
+            para.paragraph_format.alignment = 2  # WD_ALIGN_PARAGRAPH.RIGHT
+            para._p.set('dir', 'rtl')
             
-            # Split by bold markers
-            parts = re.split(r'(\*\*.*?\*\*)', para_text)
+            # Split by bold markers - using non-greedy match for nested tags
+            parts = re.split(r'(<b>.*?</b>)', para_text)
             
             for part in parts:
-                if part.startswith('**') and part.endswith('**'):
-                    # Bold text
-                    run = para.add_run(part[2:-2])
+                if part.startswith('<b>') and part.endswith('</b>'):
+                    # Bold text - extract content between tags
+                    text = re.search(r'<b>(.*?)</b>', part).group(1)
+                    run = para.add_run(text)
                     run.bold = True
+                    # Preserve RTL for the run
+                    run._r.set('dir', 'rtl')
                 else:
                     # Regular text
                     if part.strip():
-                        para.add_run(part)
+                        run = para.add_run(part)
+                        # Preserve RTL for the run
+                        run._r.set('dir', 'rtl')
         
         # Save with error handling
         try:

@@ -25,15 +25,17 @@ class GeminiService:
             generation_config=generation_config,
             system_instruction="""אתה מערכת לניקוד טקסט עברי. תפקידך:
 1. לקחת טקסט מקור מנוקד וטקסט יעד לא מנוקד
-2. לזהות את החלקים המודגשים בטקסט היעד (מסומנים ב-**)
+2. לזהות את החלקים המודגשים בטקסט היעד (מסומנים בתגיות HTML: <b>טקסט מודגש</b>)
 3. להוסיף ניקוד רק לחלקים המודגשים, תוך התאמה לניקוד במקור
 4. להשאיר את שאר הטקסט ללא שינוי
-5. לשמור על הסימון ** סביב החלקים המודגשים
+5. לשמור על תגיות <b></b> סביב החלקים המודגשים
 
 דוגמה:
 מקור: בְּרֵאשִׁית בָּרָא אֱלֹהִים
-יעד: פירוש על **בראשית** ועל **ברא** בתורה
-פלט: פירוש על **בְּרֵאשִׁית** ועל **בָּרָא** בתורה"""
+יעד: פירוש על <b>בראשית</b> ועל <b>ברא</b> בתורה
+פלט: פירוש על <b>בְּרֵאשִׁית</b> ועל <b>בָּרָא</b> בתורה
+
+שים לב: התגיות <b></b> הן חלק מהטקסט ויש לשמור עליהן בדיוק כפי שהן."""
         )
         
         self.chat_session = self.model.start_chat()
@@ -46,14 +48,15 @@ class GeminiService:
         prompt = f"""מקור (עם ניקוד):
 {content['source_content']}
 
-טקסט לניקוד (יש לנקד רק את החלקים המודגשים ב-**):
+טקסט לניקוד (יש לנקד רק את הטקסט בין תגיות <b></b>):
 {content['target_content']}
 
 שים לב:
-- נקד רק טקסט בין ** **
-- השאר את סימני ** במקומם
-- אל תשנה טקסט שאינו מודגש
-- התאם את הניקוד למקור"""
+- נקד רק טקסט בין תגיות <b></b>
+- השאר את התגיות <b></b> במקומן בדיוק
+- אל תשנה טקסט שאינו בין התגיות
+- התאם את הניקוד למקור
+- אל תשנה או תזיז את התגיות"""
 
         st_log.log("שולח בקשה ל-Gemini...", "🔄")
         response = self.chat_session.send_message(prompt)
