@@ -96,9 +96,19 @@ class StreamlitLogger:
         
     def log(self, message: str, emoji: str = "ℹ️"):
         """Add log message with emoji and display in Streamlit"""
+        # Sanitize message to handle potential encoding issues
+        message = self._sanitize_text(message)
         log_entry = f'<div class="log-entry">{emoji} {message}</div>'
         self.logs.append(log_entry)
         self._update_display()
+        
+    def _sanitize_text(self, text: str) -> str:
+        """Clean text to ensure it's valid for HTML"""
+        # Replace problematic characters
+        text = text.encode('ascii', 'xmlcharrefreplace').decode()
+        # Ensure text is properly escaped for HTML
+        text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        return text
         
     def _update_display(self):
         """Update the Streamlit display with all logs"""

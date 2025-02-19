@@ -18,6 +18,7 @@ class NikudService:
         """Read DOCX file and extract text while preserving bold formatting"""
         doc = Document(file_path)
         text = ""
+        bold_count = 0
         
         st_log.log(f"קורא קובץ: {file_path}", "📖")
         
@@ -27,7 +28,8 @@ class NikudService:
             last_was_bold = False
             
             for run in para.runs:
-                current_text = run.text
+                # Ensure proper text encoding
+                current_text = run.text.encode('utf-8').decode('utf-8')
                 
                 if run.bold:
                     # If last run wasn't bold and this isn't just whitespace, start new bold section
@@ -42,7 +44,7 @@ class NikudService:
                     if last_was_bold:
                         # Only add bold tags if there's actual content
                         if current_bold_text.strip():
-                            st_log.log(f"זיהיתי טקסט מודגש: {current_bold_text.strip()}", "🔍")
+                            bold_count += 1
                             para_text += f"<b>{current_bold_text}</b>"
                         else:
                             para_text += current_bold_text
@@ -52,13 +54,14 @@ class NikudService:
             
             # Handle any remaining bold text at end of paragraph
             if last_was_bold and current_bold_text.strip():
-                st_log.log(f"זיהיתי טקסט מודגש: {current_bold_text.strip()}", "🔍")
+                bold_count += 1
                 para_text += f"<b>{current_bold_text}</b>"
             elif last_was_bold:
                 para_text += current_bold_text
                 
             text += para_text + "\n"
-            
+        
+        st_log.log(f"זוהו {bold_count} קטעים מודגשים", "🔍")
         return text, doc
     
     def _write_docx(self, content: str, template_doc: Document, output_path: str):
