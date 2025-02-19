@@ -93,29 +93,13 @@ class NikudService:
         # Find matching sections
         matches = self.doc_processor.find_matching_sections(source_sections, target_sections)
         
-        # Return matches for user selection
-        match_options = []
-        for source_section, target_section in matches:
-            preview = target_section.content[:100] + "..." if len(target_section.content) > 100 else target_section.content
-            match_options.append({
-                "header": target_section.header,
-                "preview": preview,
-                "source_section": source_section,
-                "target_section": target_section
-            })
-            
-        return match_options
-        
-    def process_selected_sections(self, selected_matches: list, target_sections: list, target_doc: Document, output_path: str):
-        """Process only the selected sections"""
-        st_log.log("מעבד את החלקים שנבחרו...", "⚙️")
-        
-        # Process selected matches with Gemini
+        # Process each match with Gemini
+        st_log.log("מעבד חלקים...", "⚙️")
         processed_sections = {}
-        for match in selected_matches:
-            content = self.doc_processor.prepare_for_nikud(match["source_section"], match["target_section"])
+        for source_section, target_section in matches:
+            content = self.doc_processor.prepare_for_nikud(source_section, target_section)
             processed_content = self.gemini.add_nikud(content)
-            processed_sections[match["target_section"].header] = processed_content
+            processed_sections[target_section.header] = processed_content
             
         # Reconstruct document
         st_log.log("מרכיב מחדש את המסמך...", "🔄")
