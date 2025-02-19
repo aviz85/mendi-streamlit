@@ -41,27 +41,52 @@ def render_nikud_page():
         target_file = st.file_uploader("קובץ יעד (ללא ניקוד)", type=["docx"])
         
         if source_file and target_file:
-            if st.button("התחל ניקוד", use_container_width=True):
-                service = NikudService()
+            service = NikudService()
+            
+            # Save uploaded files
+            with open("temp_source.docx", "wb") as f:
+                f.write(source_file.getvalue())
+            with open("temp_target.docx", "wb") as f:
+                f.write(target_file.getvalue())
+            
+            # Get matches first
+            matches = service.process_files("temp_source.docx", "temp_target.docx", "output.docx")
+            
+            if matches:
+                st.write("### בחר פסקאות לניקוד")
+                st.write("נמצאו ההתאמות הבאות בין המסמכים. סמן את הפסקאות שברצונך לנקד:")
                 
-                # Save uploaded files
-                with open("temp_source.docx", "wb") as f:
-                    f.write(source_file.getvalue())
-                with open("temp_target.docx", "wb") as f:
-                    f.write(target_file.getvalue())
+                # Create checkboxes for each match
+                selected_matches = []
+                for match in matches:
+                    if st.checkbox(f"{match['header']}", help=match['preview']):
+                        selected_matches.append(match)
                 
-                # Process files
-                service.process_files("temp_source.docx", "temp_target.docx", "output.docx")
-                
-                # Offer download
-                with open("output.docx", "rb") as f:
-                    st.download_button(
-                        label="הורד קובץ מנוקד",
-                        data=f.read(),
-                        file_name="output.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        use_container_width=True
-                    )
+                if selected_matches:
+                    if st.button("התחל ניקוד לפסקאות שנבחרו", use_container_width=True):
+                        # Get target document sections and template
+                        target_text, target_doc = service._read_docx("temp_target.docx")
+                        target_sections = service.doc_processor.split_to_sections(target_text)
+                        
+                        # Process only selected sections
+                        service.process_selected_sections(
+                            selected_matches,
+                            target_sections,
+                            target_doc,
+                            "output.docx"
+                        )
+                        
+                        # Offer download
+                        with open("output.docx", "rb") as f:
+                            st.download_button(
+                                label="הורד קובץ מנוקד",
+                                data=f.read(),
+                                file_name="output.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                use_container_width=True
+                            )
+            else:
+                st.warning("לא נמצאו התאמות בין המסמכים")
     
     with col2:
         log_container = st.container()
