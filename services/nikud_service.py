@@ -21,7 +21,7 @@ class NikudService:
         
         for para in doc.paragraphs:
             for run in para.runs:
-                if not run.bold:
+                if run.bold:
                     text += f"<b>{run.text}</b>"
                 else:
                     text += run.text
@@ -56,13 +56,14 @@ class NikudService:
             
             for part in parts:
                 if part.startswith('<b>') and part.endswith('</b>'):
+                    # Bold text - extract content between tags
                     text = re.search(r'<b>(.*?)</b>', part).group(1)
                     run = para.add_run(text)
-                    run.bold = False
+                    run.bold = True
                 else:
+                    # Regular text
                     if part.strip():
                         run = para.add_run(part)
-                        run.bold = True
         
         # Save with error handling
         try:
