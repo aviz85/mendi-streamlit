@@ -36,9 +36,9 @@ class NikudService:
         # Copy styles from template
         doc.styles._element = template_doc.styles._element
         
-        # Set RTL for document body
-        body_props = doc._element.body.get_or_add_sectPr()
-        body_props.set('bidi', '1')
+        # Set basic RTL for document
+        section = doc.sections[0]._sectPr
+        section.set('rtl', '1')
         
         # Process content and write to doc
         paragraphs = content.split('\n')
@@ -49,7 +49,8 @@ class NikudService:
             para = doc.add_paragraph()
             # Set RTL and right alignment
             para.paragraph_format.alignment = 2  # WD_ALIGN_PARAGRAPH.RIGHT
-            para._p.set('bidi', '1')  # RTL for paragraph
+            para.style = template_doc.paragraphs[0].style if template_doc.paragraphs else None
+            para._p.set('rtl', '1')
             
             # Split by bold markers - using non-greedy match for nested tags
             parts = re.split(r'(<b>.*?</b>)', para_text)
@@ -60,10 +61,12 @@ class NikudService:
                     text = re.search(r'<b>(.*?)</b>', part).group(1)
                     run = para.add_run(text)
                     run.bold = True
+                    run._r.set('rtl', '1')
                 else:
                     # Regular text
                     if part.strip():
                         run = para.add_run(part)
+                        run._r.set('rtl', '1')
         
         # Save with error handling
         try:
