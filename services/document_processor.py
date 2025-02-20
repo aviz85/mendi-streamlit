@@ -12,33 +12,30 @@ class Section:
         self._extract_main_content()
         
     def _extract_main_content(self):
-        """Extract main content - first substantial paragraph until double newline"""
-        # Look for first paragraph of 100+ chars and continue until double newline
-        current_para = []
-        found_main = False
-        main_content = []
+        """Extract main content - first substantial paragraph (200+ chars) and its following paragraphs"""
+        paragraphs = re.split(r'\n\s*\n', self.content)  # Split on one or more blank lines
         
-        for line in self.content.split('\n'):
-            if not line.strip() and found_main:
-                if not current_para:  # Second empty line in a row
-                    break
-                main_content.extend(current_para)
-                main_content.append('')  # Add the newline
-                current_para = []
-            else:
-                current_para.append(line)
-                if not found_main and len(''.join(current_para).strip()) >= 100:
+        # Find first substantial paragraph (200+ chars)
+        main_content = []
+        found_main = False
+        
+        for para in paragraphs:
+            para = para.strip()
+            if not found_main:
+                if len(para) >= 200:  # Changed from 100 to 200
                     found_main = True
-                    
-        if current_para:  # Add any remaining content
-            main_content.extend(current_para)
-            
+                    main_content.append(para)
+                    # Extract first sentence immediately when we find the main paragraph
+                    sentences = re.split('[.!?]', para)
+                    if sentences:
+                        self.first_sentence = sentences[0].strip()
+            else:
+                if not para:  # Stop at first empty paragraph after main content
+                    break
+                main_content.append(para)
+                
         if main_content:
-            self.main_content = '\n'.join(main_content)
-            # Extract first sentence
-            sentences = re.split('[.!?]', main_content[0])
-            if sentences:
-                self.first_sentence = sentences[0].strip()
+            self.main_content = '\n\n'.join(main_content)
 
 class DocumentProcessor:
     def __init__(self):
@@ -112,13 +109,13 @@ class DocumentProcessor:
     def find_matching_sections(self, source_sections: List[Section], 
                              target_sections: List[Section],
                              similarity_threshold: float = 0.9) -> List[Tuple[Section, Section]]:
-        """Find matching sections between source and target"""
+        """Find matching sections between source and target by comparing first sentences of main content"""
         matches = []
         
         st_log.log("מחפש התאמות בין חלקי המסמכים...", "🔍")
         
         for source_section in source_sections:
-            if not source_section.first_sentence:
+            if not source_section.first_sentence:  # Skip if no substantial paragraph found
                 continue
                 
             source_normalized = self.normalize_text(source_section.first_sentence)
@@ -127,11 +124,12 @@ class DocumentProcessor:
             best_score = 0
             
             for target_section in target_sections:
-                if not target_section.first_sentence:
+                if not target_section.first_sentence:  # Skip if no substantial paragraph found
                     continue
                     
                 target_normalized = self.normalize_text(target_section.first_sentence)
                 
+                # Calculate similarity based on first sentences
                 score = self._calculate_similarity(source_normalized, target_normalized)
                 
                 if score > best_score and score >= similarity_threshold:
