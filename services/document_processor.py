@@ -12,17 +12,33 @@ class Section:
         self._extract_main_content()
         
     def _extract_main_content(self):
-        """Extract main content - paragraph with 100+ chars and following until double newline"""
-        paragraphs = self.content.split('\n\n')
-        for i, para in enumerate(paragraphs):
-            if len(para.strip()) >= 100:
-                # Found main paragraph, include it and following until double newline
-                self.main_content = '\n'.join(paragraphs[i:])
-                # Extract first sentence
-                sentences = re.split('[.!?]', para)
-                if sentences:
-                    self.first_sentence = sentences[0].strip()
-                break
+        """Extract main content - first substantial paragraph until double newline"""
+        # Look for first paragraph of 100+ chars and continue until double newline
+        current_para = []
+        found_main = False
+        main_content = []
+        
+        for line in self.content.split('\n'):
+            if not line.strip() and found_main:
+                if not current_para:  # Second empty line in a row
+                    break
+                main_content.extend(current_para)
+                main_content.append('')  # Add the newline
+                current_para = []
+            else:
+                current_para.append(line)
+                if not found_main and len(''.join(current_para).strip()) >= 100:
+                    found_main = True
+                    
+        if current_para:  # Add any remaining content
+            main_content.extend(current_para)
+            
+        if main_content:
+            self.main_content = '\n'.join(main_content)
+            # Extract first sentence
+            sentences = re.split('[.!?]', main_content[0])
+            if sentences:
+                self.first_sentence = sentences[0].strip()
 
 class DocumentProcessor:
     def __init__(self):
@@ -42,14 +58,26 @@ class DocumentProcessor:
         current_header = ""
         current_content = []
         
-        st_log.log("מפצל את המסמך לחלקים...", "📑")
+        st_log.log("מפצל את המסמך לחלקים...", "��")
         
+        # Split while preserving all newlines
         lines = text.split('\n')
-        for line in lines:
+        for i, line in enumerate(lines):
             if self._is_hebrew_letter_line(line):
                 # Save previous section if exists
                 if current_content:
-                    sections.append(Section(current_header, '\n'.join(current_content)))
+                    # Join with original newlines
+                    content = ""
+                    for j, content_line in enumerate(current_content):
+                        content += content_line
+                        # Add original number of newlines after each line
+                        if j < len(current_content) - 1:
+                            next_non_empty = next((l for l in lines[i:] if l.strip()), None)
+                            newlines = 1
+                            if not next_non_empty:
+                                newlines = 2
+                            content += '\n' * newlines
+                    sections.append(Section(current_header, content))
                     st_log.log(f"נמצא חלק: {line}", "📎")
                 current_header = line
                 current_content = []
@@ -58,7 +86,12 @@ class DocumentProcessor:
                 
         # Add last section
         if current_content:
-            sections.append(Section(current_header, '\n'.join(current_content)))
+            content = ""
+            for j, line in enumerate(current_content):
+                content += line
+                if j < len(current_content) - 1:
+                    content += '\n'
+            sections.append(Section(current_header, content))
             
         st_log.log(f"נמצאו {len(sections)} חלקים", "✅")
         return sections

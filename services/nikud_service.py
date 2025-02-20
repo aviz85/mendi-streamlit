@@ -28,37 +28,25 @@ class NikudService:
             last_was_bold = False
             
             for run in para.runs:
-                # Ensure proper text encoding
-                current_text = run.text.encode('utf-8').decode('utf-8')
-                
                 if run.bold:
-                    # If last run wasn't bold and this isn't just whitespace, start new bold section
-                    if not last_was_bold and current_text.strip():
-                        current_bold_text = current_text
-                    # If continuing bold section or this is just whitespace
-                    else:
-                        current_bold_text += current_text
+                    if not last_was_bold:  # Start of bold section
+                        current_bold_text = run.text
+                    else:  # Continue bold section
+                        current_bold_text += run.text
                     last_was_bold = True
                 else:
-                    # If we were in bold section
-                    if last_was_bold:
-                        # Only add bold tags if there's actual content
-                        if current_bold_text.strip():
-                            bold_count += 1
-                            para_text += f"<b>{current_bold_text}</b>"
-                        else:
-                            para_text += current_bold_text
+                    if last_was_bold:  # End of bold section
+                        para_text += f"<b>{current_bold_text}</b>"
                         current_bold_text = ""
-                    para_text += current_text
+                        bold_count += 1
+                    para_text += run.text
                     last_was_bold = False
             
             # Handle any remaining bold text at end of paragraph
-            if last_was_bold and current_bold_text.strip():
-                bold_count += 1
+            if last_was_bold and current_bold_text:
                 para_text += f"<b>{current_bold_text}</b>"
-            elif last_was_bold:
-                para_text += current_bold_text
-                
+                bold_count += 1
+            
             text += para_text + "\n"
         
         st_log.log(f"זוהו {bold_count} קטעים מודגשים", "🔍")

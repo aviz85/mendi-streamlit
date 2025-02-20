@@ -104,11 +104,8 @@ class StreamlitLogger:
         
     def _sanitize_text(self, text: str) -> str:
         """Clean text to ensure it's valid for HTML"""
-        # Replace problematic characters
-        text = text.encode('ascii', 'xmlcharrefreplace').decode()
-        # Ensure text is properly escaped for HTML
-        text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-        return text
+        # Only escape HTML special characters, preserve Hebrew
+        return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
         
     def _update_display(self):
         """Update the Streamlit display with all logs"""
