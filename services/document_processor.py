@@ -12,17 +12,17 @@ class Section:
         self._extract_main_content()
         
     def _extract_main_content(self):
-        """Extract main content - first substantial paragraph (200+ chars) and its following paragraphs"""
+        """Extract main content - first substantial paragraph (100+ chars) and its following paragraphs"""
         paragraphs = re.split(r'\n\s*\n', self.content)  # Split on one or more blank lines
         
-        # Find first substantial paragraph (200+ chars)
+        # Find first substantial paragraph (100+ chars)
         main_content = []
         found_main = False
         
         for para in paragraphs:
             para = para.strip()
             if not found_main:
-                if len(para) >= 200:  # Changed from 100 to 200
+                if len(para) >= 100:  # Changed from 200 to 100
                     found_main = True
                     main_content.append(para)
                     # Extract first sentence immediately when we find the main paragraph
@@ -108,29 +108,41 @@ class DocumentProcessor:
 
     def find_matching_sections(self, source_sections: List[Section], 
                              target_sections: List[Section],
-                             similarity_threshold: float = 0.9) -> List[Tuple[Section, Section]]:
-        """Find matching sections between source and target by comparing first sentences of main content"""
+                             similarity_threshold: float = 0.7) -> List[Tuple[Section, Section]]:
+        """Find matching sections between source and target by comparing content"""
         matches = []
         
         st_log.log("מחפש התאמות בין חלקי המסמכים...", "🔍")
         
         for source_section in source_sections:
-            if not source_section.first_sentence:  # Skip if no substantial paragraph found
+            if not source_section.main_content:  # Skip if no substantial paragraph found
                 continue
                 
-            source_normalized = self.normalize_text(source_section.first_sentence)
+            source_normalized = self.normalize_text(source_section.main_content)
+            # Backup for just the first sentence comparison 
+            source_first_sentence = self.normalize_text(source_section.first_sentence) if source_section.first_sentence else ""
             
             best_match = None
             best_score = 0
             
             for target_section in target_sections:
-                if not target_section.first_sentence:  # Skip if no substantial paragraph found
+                if not target_section.main_content:  # Skip if no substantial paragraph found
                     continue
                     
-                target_normalized = self.normalize_text(target_section.first_sentence)
+                target_normalized = self.normalize_text(target_section.main_content)
+                target_first_sentence = self.normalize_text(target_section.first_sentence) if target_section.first_sentence else ""
                 
-                # Calculate similarity based on first sentences
-                score = self._calculate_similarity(source_normalized, target_normalized)
+                # Calculate two types of similarity
+                # 1. Full content similarity (gives a broader match)
+                content_score = self._calculate_similarity(source_normalized, target_normalized)
+                
+                # 2. First sentence similarity (more precise for beginning of paragraphs)
+                first_sentence_score = 0
+                if source_first_sentence and target_first_sentence:
+                    first_sentence_score = self._calculate_similarity(source_first_sentence, target_first_sentence)
+                
+                # Use the better of the two scores
+                score = max(content_score, first_sentence_score)
                 
                 if score > best_score and score >= similarity_threshold:
                     best_score = score
