@@ -3,6 +3,7 @@ import google.generativeai as genai
 from typing import Dict
 import logging
 import sys
+import re  # Added for regex support
 from .usage_logger import streamlit_logger as st_log
 import streamlit as st
 
@@ -70,8 +71,10 @@ class GeminiService:
    ב. להשאיר את שאר הטקסט ללא ניקוד
 
 חשוב מאוד:
-- העתק את כל הסקשן במדויק, מילה במילה
+- העתק את כל הסקשן במדויק, מילה במילה, כולל כל ירידות השורה
 - כל טקסט מודגש (בין תגיות <b></b>) חייב לקבל ניקוד מלא
+- חשוב מאוד למצוא את הניקוד המתאים לכל מילה מודגשת, אפילו אם מילה דומה מופיעה בצורה שונה במקור
+- שמור על כל ירידות השורה במקומן המדויק
 - אל תשנה שום דבר מלבד הוספת ניקוד לחלקים המודגשים
 - שמור על כל תגיות ה-HTML (<b></b>) במקומן המדויק
 - אל תוסיף תגיות <br> או כל תגית HTML אחרת
@@ -100,6 +103,12 @@ class GeminiService:
         """Process content through Gemini to add nikud"""
         st_log.log(f"מעבד חלק: {content['target_header']}", "📝")
         
+        # Check if target content is too large (more than 100,000 chars)
+        target_content = content['target_content']
+        if len(target_content) > 100000:
+            st_log.log(f"⚠️ תוכן היעד גדול מדי ({len(target_content)} תווים), מפצל לחלקים קטנים", "⚠️")
+            return self._process_large_content(content, report_path)
+        
         prompt = f"""[טקסט מקור (עם ניקוד) - החלק העיקרי]:
 {content['source_content']}
 
@@ -107,14 +116,16 @@ class GeminiService:
 {content['target_content']}
 
 הנחיות חשובות:
-1. העתק את כל הסקשן הנ"ל במדויק, מילה במילה
-2. הוסף ניקוד לכל טקסט שנמצא בין תגיות <b></b> (טקסט מודגש)
+1. העתק את כל הסקשן הנ"ל במדויק, מילה במילה, כולל כל ירידות השורה
+2. הוסף ניקוד מלא לכל טקסט שנמצא בין תגיות <b></b> (טקסט מודגש)
 3. ודא שכל מילה מודגשת מקבלת את כל הניקוד הנדרש
 4. השאר את כל שאר הטקסט בדיוק כפי שהוא, ללא שום ניקוד
 5. שמור על כל תגיות ה-HTML במקומן המדויק
-6. אל תוסיף תגיות <br> או כל תגית HTML אחרת
-7. טקסט שאינו מודגש חייב להישאר ללא ניקוד, אפילו אם הוא זהה לטקסט במקור
-8. החזר את הסקשן המלא בדיוק כפי שהוא, עם ניקוד רק בחלקים המודגשים"""
+6. שמור על כל ירידות השורה במקומן המדויק - זה קריטי
+7. אל תוסיף תגיות <br> או כל תגית HTML אחרת
+8. אל תשנה את סדר המילים או התוכן
+9. טקסט שאינו מודגש חייב להישאר ללא ניקוד, אפילו אם הוא זהה לטקסט מנוקד במקור
+10. חפש בטקסט המקור את המילים הדומות ביותר למילים המודגשות כדי להוסיף להן ניקוד מתאים"""
 
         # Log full prompt with clear separators
         self.logger.info("\n" + "="*50 + "\nFULL GEMINI PROMPT:\n" + "="*50 + "\n" + prompt)
@@ -149,4 +160,97 @@ class GeminiService:
         
         st_log.log(f"התקבלה תשובה מ-Gemini", "✨")
         
-        return response.text 
+        return response.text
+        
+    def _process_large_content(self, content: Dict, report_path: str = None) -> str:
+        """Process large content by splitting it into chunks and processing each chunk"""
+        source_content = content['source_content']
+        target_content = content['target_content']
+        target_header = content['target_header']
+        
+        # Find all <b> tags positions to split intelligently
+        bold_positions = []
+        for match in re.finditer(r'<b>.*?</b>', target_content, re.DOTALL):
+            bold_positions.append((match.start(), match.end()))
+        
+        if not bold_positions:
+            st_log.log("לא נמצאו תגי <b> בתוכן היעד", "⚠️")
+            return target_content  # Return unchanged if no bold tags
+            
+        # Determine chunk size (aim for ~25 bold tags per chunk)
+        total_bold_tags = len(bold_positions)
+        chunk_count = max(1, total_bold_tags // 25)
+        bold_tags_per_chunk = max(1, total_bold_tags // chunk_count)
+        
+        st_log.log(f"מפצל לכ-{chunk_count} חלקים עם ~{bold_tags_per_chunk} תגי <b> בכל חלק", "🔄")
+        
+        # Split content into chunks
+        chunks = []
+        current_chunk_start = 0
+        
+        for i in range(0, total_bold_tags, bold_tags_per_chunk):
+            # If this is the last chunk, include everything to the end
+            if i + bold_tags_per_chunk >= total_bold_tags:
+                chunk_end = len(target_content)
+            else:
+                # Otherwise, end the chunk after the last bold tag in this group
+                chunk_end = bold_positions[i + bold_tags_per_chunk - 1][1]
+            
+            # Extract chunk
+            chunk = target_content[current_chunk_start:chunk_end]
+            chunks.append(chunk)
+            current_chunk_start = chunk_end
+        
+        # Process each chunk
+        processed_chunks = []
+        
+        for idx, chunk in enumerate(chunks):
+            st_log.log(f"מעבד חלק {idx+1} מתוך {len(chunks)}", "🔄")
+            
+            # Create a fresh chat session for each chunk
+            new_session = self.model.start_chat()
+            
+            # Create chunk content dictionary
+            chunk_content = {
+                'source_content': source_content,
+                'target_content': chunk,
+                'target_header': f"{target_header} (חלק {idx+1}/{len(chunks)})"
+            }
+            
+            # Construct prompt for this chunk
+            prompt = f"""[טקסט מקור (עם ניקוד) - החלק העיקרי]:
+{chunk_content['source_content']}
+
+[חלק {idx+1} מתוך {len(chunks)} של סקשן יעד - יש לשכתב במדויק עם ניקוד בחלקים המודגשים בלבד]:
+{chunk_content['target_content']}
+
+הנחיות חשובות:
+1. העתק את החלק הנ"ל במדויק, מילה במילה, כולל כל ירידות השורה
+2. הוסף ניקוד מלא לכל טקסט שנמצא בין תגיות <b></b> (טקסט מודגש)
+3. ודא שכל מילה מודגשת מקבלת את כל הניקוד הנדרש
+4. השאר את כל שאר הטקסט בדיוק כפי שהוא, ללא שום ניקוד
+5. שמור על כל תגיות ה-HTML במקומן המדויק
+6. שמור על כל ירידות השורה במקומן המדויק - זה קריטי
+7. אל תוסיף תגיות <br> או כל תגית HTML אחרת
+8. אל תשנה את סדר המילים או התוכן
+9. טקסט שאינו מודגש חייב להישאר ללא ניקוד, אפילו אם הוא זהה לטקסט מנוקד במקור
+10. חפש בטקסט המקור את המילים הדומות ביותר למילים המודגשות כדי להוסיף להן ניקוד מתאים"""
+            
+            # Log chunk info
+            if report_path:
+                with open(report_path, 'a', encoding='utf-8') as report_file:
+                    report_file.write("\n" + "="*50 + "\n")
+                    report_file.write(f"CHUNK {idx+1}/{len(chunks)} FOR SECTION {target_header}:\n")
+                    report_file.write("="*50 + "\n")
+                    report_file.write(f"[Chunk length: {len(chunk)} chars]\n")
+                    report_file.write("="*50 + "\n")
+            
+            # Send chunk to Gemini
+            response = new_session.send_message(prompt)
+            processed_chunks.append(response.text)
+            
+        # Combine processed chunks
+        st_log.log(f"משלב {len(processed_chunks)} חלקים מעובדים", "🔄")
+        combined_content = ''.join(processed_chunks)
+        
+        return combined_content 

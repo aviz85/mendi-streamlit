@@ -90,9 +90,18 @@ class NikudService:
         doc._body._element.set('bidi', '1')
         
         # Process content and write to doc
+        # Split by double newlines to separate paragraphs properly
         paragraphs = content.split('\n')
+        
         for para_text in paragraphs:
+            # Add empty paragraph to preserve line breaks
             if not para_text.strip():
+                empty_para = doc.add_paragraph()
+                empty_para.paragraph_format.alignment = 2  # WD_ALIGN_PARAGRAPH.RIGHT
+                empty_para.style = template_doc.paragraphs[0].style if template_doc.paragraphs else None
+                # Set paragraph direction
+                pPr = empty_para._p.get_or_add_pPr()
+                pPr.set('bidi', '1')
                 continue
                 
             para = doc.add_paragraph()
@@ -121,7 +130,7 @@ class NikudService:
                     rPr.append(bCs)
                 else:
                     # Regular text
-                    if part.strip():
+                    if part.strip() or part == " ":  # Preserve all text, including whitespace-only
                         run = para.add_run(part)
                         # Set run direction
                         rPr = run._r.get_or_add_rPr()
@@ -176,7 +185,11 @@ class NikudService:
         # Process each match with Gemini
         st_log.log("מעבד חלקים...", "⚙️")
         processed_sections = {}
-        for source_section, target_section in matches:
+        
+        # Create a new GeminiService instance for each section to avoid context accumulation
+        for idx, (source_section, target_section) in enumerate(matches):
+            st_log.log(f"מעבד חלק {idx+1} מתוך {len(matches)}: {target_section.header}", "⚙️")
+            
             content = self.doc_processor.prepare_for_nikud(source_section, target_section)
             if not content:
                 continue
@@ -194,56 +207,33 @@ class NikudService:
                 self._append_to_debug(debug_path, "טקסט יעד (עם תגי <b>):\n\n")
                 self._append_to_debug(debug_path, f"{content['target_content']}\n\n")
             
-            processed_content = self.gemini.add_nikud(content, report_path)
+            # Create a fresh Gemini instance for each section to avoid context issues
+            section_gemini = GeminiService(api_key=self.gemini.api_key)
+            processed_content = section_gemini.add_nikud(content, report_path)
             
             # Add debug information for processed content
             if debug_path:
                 self._append_to_debug(debug_path, "תוצאה (אחרי עיבוד):\n\n")
                 self._append_to_debug(debug_path, f"{processed_content}\n\n")
-            
-            # Validate that only bold text has nikud
-            if not self._validate_nikud_in_bold_only(processed_content):
-                st_log.log(f"⚠️ אזהרה: זוהה ניקוד בטקסט שאינו מודגש בחלק {target_section.header}", "⚠️")
-                self._append_to_report(report_path, f"⚠️ זוהה ניקוד בטקסט שאינו מודגש - מבצע תיקון\n")
-                # Try to fix by removing nikud from non-bold text
-                processed_content = self._fix_nikud_overflow(processed_content)
-            else:
-                self._append_to_report(report_path, f"✅ הניקוד נוסף בהצלחה רק לחלקים המודגשים\n")
-            
-            # Save sample of processed content to report
-            bold_samples = re.findall(r'<b>(.*?)</b>', processed_content)[:3]  # Get up to 3 bold samples
-            if bold_samples:
-                self._append_to_report(report_path, f"דוגמאות לטקסט מנוקד:\n")
-                for i, sample in enumerate(bold_samples, 1):
-                    self._append_to_report(report_path, f"{i}. <b>{sample}</b>\n")
-            
-            self._append_to_report(report_path, "\n")
+                
+            # Save the processed content
             processed_sections[target_section.header] = processed_content
             
-        # Reconstruct document
-        st_log.log("מרכיב מחדש את המסמך...", "🔄")
+        # Recombine the processed sections
+        st_log.log("מרכיב מסמך מעובד...", "📄")
         final_content = []
         for section in target_sections:
             if section.header in processed_sections:
                 final_content.append(processed_sections[section.header])
             else:
+                # If section wasn't processed, use original content
                 final_content.append(section.content)
-                
-        # Write output
+        
+        # Write the combined content to the output file
         self._write_docx('\n'.join(final_content), target_doc, output_path)
         
-        # Final report
-        self._append_to_report(report_path, f"סיכום:\n")
-        self._append_to_report(report_path, f"- סך הכל עובדו {len(processed_sections)} חלקים\n")
-        self._append_to_report(report_path, f"- המסמך המנוקד נשמר בהצלחה: {output_path}\n")
-        self._append_to_report(report_path, f"- דוח זה נשמר בהצלחה: {report_path}\n")
-        if debug_path:
-            self._append_to_report(report_path, f"- קובץ דיבוג נשמר בנתיב: {debug_path}\n")
-        
-        st_log.log(f"המסמך נשמר בהצלחה בנתיב: {output_path}", "💾")
-        st_log.log(f"דוח עיבוד נשמר בנתיב: {report_path}", "📝")
-        if debug_path:
-            st_log.log(f"קובץ דיבוג נשמר בנתיב: {debug_path}", "🔍")
+        # Log completion
+        st_log.log(f"תהליך הוספת הניקוד הושלם. קובץ נשמר ב: {output_path}", "✅")
 
     def _append_to_report(self, report_path: str, text: str):
         """Append text to the report file"""
@@ -288,9 +278,8 @@ class NikudService:
                 clean_part = re.sub(nikud_pattern, '', part)
                 result.append(clean_part)
             
-        # Remove <br> tags as they're unnecessary
+        # Join back without removing any whitespace or newlines
         result_text = ''.join(result)
-        result_text = result_text.replace('<br>', '')
         
         return result_text
 
