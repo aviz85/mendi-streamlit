@@ -16,6 +16,8 @@ class NikudMapper:
             'nikud': r'[\u05B0-\u05BC\u05C1-\u05C2\u05C4-\u05C5\u05C7]',
             'hebrew': r'[\u0590-\u05FF]'
         }
+        self._nikud_cache = {}  # מטמון למילים מנוקדות
+        self._clean_cache = {}  # מטמון למילים נקיות
         
     def _create_virtual_copy(self, text: str) -> Tuple[List[str], List[str]]:
         """
@@ -24,40 +26,46 @@ class NikudMapper:
         Returns:
             Tuple[List[str], List[str]]: (מילים מנוקדות, מילים ללא ניקוד)
         """
+        # הסרת שורות חדשות ורווחים מיותרים
+        text = ' '.join(text.split())
+        
+        # מציאת כל המילים בעברית עם הפיסוק שלהן
+        matches = list(re.finditer(f"({self.nikud_patterns['hebrew']}+)([^\u0590-\u05FF]*)", text))
         nikud_words = []  # מילים מנוקדות
         clean_words = []  # מילים ללא ניקוד
         
-        for word in re.finditer(f"{self.nikud_patterns['hebrew']}+", text):
-            if self._has_nikud(word.group()):
-                nikud_words.append(word.group())
-                clean_words.append(self._strip_nikud(word.group()))
+        for match in matches:
+            word = match.group(1)
+            nikud_words.append(word)
+            clean_words.append(self._strip_nikud(word))
         
         return nikud_words, clean_words
 
     def _find_overlap(self, source_words: List[str], target_text: str) -> Tuple[int, int, int, int]:
-        """מציאת חפיפה בין הטקסטים"""
-        target_words = re.findall(f"{self.nikud_patterns['hebrew']}+", target_text)
+        """מציאת חפיפה בין מילות המקור לטקסט היעד"""
+        # מציאת כל המילים בטקסט היעד
+        target_matches = list(re.finditer(f"({self.nikud_patterns['hebrew']}+)", target_text))
+        target_words = [m.group(1) for m in target_matches]
         
-        if not target_words:
-            return 0, 0, 0, 0
+        # הסרת ניקוד מהמילים
+        source_clean = [self._strip_nikud(word) for word in source_words]
+        target_clean = [self._strip_nikud(word) for word in target_words]
         
-        # מציאת כל החפיפות האפשריות
-        best_match = None
+        # מציאת החפיפה הטובה ביותר
+        best_overlap = (0, 0, 0, 0)
         best_score = 0
-        min_size = 20  # מינימום מילים לחפיפה
-        window_step = 10  # קפיצות של 10 מילים
-        similarity_threshold = 85  # סף דמיון מופחת
+        min_size = 3  # גודל מינימלי לחפיפה
+        window_step = 1  # קפיצות של מילה אחת
+        similarity_threshold = 85  # סף דמיון
         
         # חיפוש חפיפות בחלונות
-        max_size = min(300, len(target_words))  # הגבלת גודל חלון
-        
-        for size in range(min_size, max_size + 1, window_step):
-            for j in range(0, len(target_words) - size + 1, window_step):
-                target_slice = ' '.join(target_words[j:j+size])
+        for size in range(min_size, min(len(target_clean) + 1, len(source_clean) + 1)):
+            for j in range(0, len(target_clean) - size + 1, window_step):
+                target_slice = ' '.join(target_clean[j:j+size])
                 
                 # חיפוש בטקסט המקור
-                for i in range(0, len(source_words) - size + 1, window_step):
-                    source_slice = ' '.join(source_words[i:i+size])
+                for i in range(0, len(source_clean) - size + 1, window_step):
+                    source_slice = ' '.join(source_clean[i:i+size])
                     
                     # חישוב דמיון
                     ratio = fuzz.ratio(source_slice, target_slice)
@@ -65,25 +73,32 @@ class NikudMapper:
                         continue
                     
                     # חישוב ציון
-                    position_score = 1 - (j / len(target_words))  # העדפה להתחלה
-                    size_score = size / max_size  # העדפה לחפיפות ארוכות
+                    position_score = 1 - (abs(i - j) / max(len(source_clean), len(target_clean)))  # העדפה למיקום דומה
+                    size_score = size / len(target_clean)  # העדפה לחפיפות ארוכות
                     ratio_score = ratio / 100  # דמיון טקסטואלי
                     
                     score = (
                         size_score * 0.5 +     # 50% משקל לאורך
-                        ratio_score * 0.4 +    # 40% משקל לדמיון
-                        position_score * 0.1    # 10% משקל למיקום
+                        ratio_score * 0.3 +    # 30% משקל לדמיון
+                        position_score * 0.2    # 20% משקל למיקום
                     )
                     
                     if score > best_score:
                         best_score = score
-                        best_match = (i, i+size, j, j+size)
+                        best_overlap = (i, i+size, j, j+size)
                         
-                        # מפסיקים אם מצאנו חפיפה מספיק טובה
-                        if score > 0.85:
-                            return best_match
+                        # אם מצאנו חפיפה מספיק טובה, נחזיר אותה מיד
+                        if score > 0.9:
+                            return best_overlap
         
-        return best_match or (0, 0, 0, 0)
+        # אם לא מצאנו חפיפה טובה, נחפש חפיפה מילה-מילה
+        if best_overlap == (0, 0, 0, 0):
+            for i, source_word in enumerate(source_clean):
+                for j, target_word in enumerate(target_clean):
+                    if source_word == target_word:
+                        return (i, i+1, j, j+1)
+        
+        return best_overlap
 
     def _calc_context_score(self, source_words: List[str], target_words: List[str], match: Match) -> float:
         """חישוב ציון הקשר לחפיפה"""
@@ -112,7 +127,7 @@ class NikudMapper:
         target_word = target_words[target_cursor]
         
         logger.info(
-            f"מיקום סמן מקור: {source_cursor} מו��ה על המילה - {source_word}\n"
+            f"מיקום סמן מקור: {source_cursor} מורה על המילה - {source_word}\n"
             f"מיקום סמן יעד: {target_cursor} מורה על המילה - {target_word}"
         )
         
@@ -120,32 +135,67 @@ class NikudMapper:
 
     def add_nikud_to_text(self, source_text: str, target_text: str) -> str:
         """הוספת ניקוד לטקסט"""
+        # בדיקה במטמון
+        cache_key = f"{hash(source_text)}:{hash(target_text)}"
+        if cache_key in self._nikud_cache:
+            return self._nikud_cache[cache_key]
+            
         # יצירת עותק וירטואלי
         source_nikud, source_clean = self._create_virtual_copy(source_text)
-        target_words = re.findall(f"{self.nikud_patterns['hebrew']}+", target_text)
         
         # מציאת חפיפה
         start_s, end_s, start_t, end_t = self._find_overlap(source_clean, target_text)
         
         # אם לא נמצאה חפיפה, מחזירים את הטקסט המקורי
         if start_s == end_s == start_t == end_t == 0:
+            self._nikud_cache[cache_key] = target_text
             return target_text
+        
+        # מציאת כל המילים בטקסט היעד עם הפיסוק שלהן
+        target_matches = list(re.finditer(f"({self.nikud_patterns['hebrew']}+)([^\u0590-\u05FF]*)", target_text))
+        target_words = [m.group(1) for m in target_matches]  # המילים עצמן
+        target_puncts = [m.group(2) for m in target_matches]  # הפיסוק אחרי כל מילה
         
         # עיבוד הטקסט לפי החפיפה שנמצאה
         result = []
         
         # מילים לפני החפיפה
-        result.extend(target_words[:start_t])
+        for i in range(start_t):
+            result.append(target_words[i] + target_puncts[i])
         
-        # מילים בתוצאה החפיפה
+        # מילים בתוך החפיפה
         for i in range(start_t, end_t):
             source_idx = start_s + (i - start_t)
-            result.append(source_nikud[source_idx])
+            if source_idx < len(source_clean):
+                target_clean = self._strip_nikud(target_words[i])
+                source_clean_word = source_clean[source_idx]
+                
+                # בדיקה אם המילה הנוכחית מתאימה למילה במקור
+                if target_clean == source_clean_word:
+                    result.append(source_nikud[source_idx] + target_puncts[i])
+                else:
+                    # חיפוש מילה מנוקדת מתאימה בכל המקור
+                    found = False
+                    for j, (nikud_word, clean_word) in enumerate(zip(source_nikud, source_clean)):
+                        if clean_word == target_clean:
+                            result.append(nikud_word + target_puncts[i])
+                            found = True
+                            break
+                    if not found:
+                        result.append(target_words[i] + target_puncts[i])
+            else:
+                result.append(target_words[i] + target_puncts[i])
         
         # מילים אחרי החפיפה
-        result.extend(target_words[end_t:])
+        for i in range(end_t, len(target_words)):
+            result.append(target_words[i] + target_puncts[i])
         
-        return ' '.join(result)
+        # חיבור התוצאה למחרוזת אחת
+        final_result = ' '.join(result)
+        
+        # שמירה במטמון
+        self._nikud_cache[cache_key] = final_result
+        return final_result
 
     def _has_nikud(self, text: str) -> bool:
         return bool(re.search(self.nikud_patterns['nikud'], text))
@@ -154,56 +204,78 @@ class NikudMapper:
         return bool(re.search(self.nikud_patterns['hebrew'], text))
 
     def _strip_nikud(self, text: str) -> str:
-        return re.sub(self.nikud_patterns['nikud'], '', text)
+        if text in self._clean_cache:
+            return self._clean_cache[text]
+        result = re.sub(self.nikud_patterns['nikud'], '', text)
+        self._clean_cache[text] = result
+        return result
 
     def _is_bold(self, word: str) -> bool:
         # TODO: לממש בדיקת הדגשה לפי המסמך
         return True
 
-    def process_docx(self, input_path: str, output_path: str, source_path: str = None) -> None:
+    def process_docx(self, source_path: str, target_path: str, output_path: str) -> None:
         """
         עיבוד קובץ Word והוספת ניקוד
         
         Args:
-            input_path: נתיב לקובץ הקלט
+            source_path: נתיב לקובץ המקור המנוקד
+            target_path: נתיב לקובץ היעד
             output_path: נתיב לקובץ הפלט
-            source_path: נתיב לקובץ המקור המנוקד. אם לא צוין, משתמש בקובץ הקלט
         """
-        logger.info(f"מעבד קבצים:\nמקור: {source_path or input_path}\nלט: {input_path}")
+        logger.info(f"מתחיל עיבוד קבצים:\nמקור: {source_path}\nקלט: {target_path}\nפלט: {output_path}")
         
-        # קריאת קובץ המקור והכנת המילים המנוקדות
-        source_doc = Document(source_path or input_path)
-        source_text = '\n'.join(p.text for p in source_doc.paragraphs)
-        source_nikud, source_clean = self._create_virtual_copy(source_text)
-        
-        # קריאת קובץ היעד
-        target_doc = Document(input_path)
-        
-        # עיבוד כל פסקה
-        for paragraph in target_doc.paragraphs:
-            # מציאת חפיפה לכל הפסקה
-            paragraph_text = paragraph.text
-            if not self._has_hebrew(paragraph_text):
-                continue
+        try:
+            # קריאת קובץ המקור והכנת המילים המנוקדות
+            logger.info("קורא קובץ מקור...")
+            source_doc = Document(source_path)
+            source_text = '\n'.join(p.text for p in source_doc.paragraphs)
+            logger.info(f"טקסט מקור ({len(source_text)} תווים):\n{source_text[:200]}...")
+            source_nikud, source_clean = self._create_virtual_copy(source_text)
+            logger.info(f"נמצאו {len(source_nikud)} מילים מנוקדות במקור")
             
-            start_s, end_s, start_t, end_t = self._find_overlap(source_clean, paragraph_text)
+            # קריאת קובץ היעד
+            logger.info("קורא קובץ יעד...")
+            target_doc = Document(target_path)
             
-            # עיבוד הריצות בפסקה
-            for run in paragraph.runs:
-                if run.bold or not self.bold_only:
-                    original_text = run.text
-                    if self._has_hebrew(original_text):
-                        run.text = self.add_nikud_to_text(source_text, original_text)
-        
-        # שמירת הקובץ
-        target_doc.save(output_path)
-        logger.info(f"הקובץ נשמר: {output_path}")
+            # עיבוד כל פסקה
+            logger.info(f"מעבד {len(target_doc.paragraphs)} פסקאות...")
+            for i, paragraph in enumerate(target_doc.paragraphs, 1):
+                # מציאת חפיפה לכל הפסקה
+                paragraph_text = paragraph.text
+                if not self._has_hebrew(paragraph_text):
+                    logger.info(f"פסקה {i}: אין טקסט בעברית, דילוג")
+                    continue
+                
+                logger.info(f"פסקה {i} ({len(paragraph_text)} תווים):\n{paragraph_text}")
+                
+                # עיבוד הריצות בפסקה
+                for j, run in enumerate(paragraph.runs, 1):
+                    # בדיקת הדגשה לפי XML
+                    rPr = run._r.get_or_add_rPr()
+                    is_bold = bool(rPr.xpath('.//w:b') or rPr.xpath('.//w:bCs'))
+                    
+                    if is_bold or not self.bold_only:
+                        original_text = run.text
+                        if self._has_hebrew(original_text):
+                            logger.info(f"מעבד ריצה {j} (מודגש={is_bold}): {original_text}")
+                            run.text = self.add_nikud_to_text(source_text, original_text)
+                            logger.info(f"אחרי ניקוד: {run.text}")
+            
+            # שמירת הקובץ
+            logger.info(f"שומר קובץ פלט: {output_path}")
+            target_doc.save(output_path)
+            logger.info("הקובץ נשמר בהצלחה")
+            
+        except Exception as e:
+            logger.error(f"שגיאה בעיבוד הקובץ: {str(e)}", exc_info=True)
+            raise
 
     def test_known_dataset(self) -> None:
         """בדיקת המנקד על דאטה סט ידוע"""
         # דוגמה מוכרת עם ניקוד - עם שוליים נוספים
         source_text = """
-        וַיְהִי בִּימֵי אֲחַשְׁוֵרוֹשׁ הוּא אֲחַשְׁוֵרוֹשׁ הַמֹּלֵךְ מֵהֹדּוּ וְעַד כּוּשׁ. בַּיָּמִים הָה��ם כְּשֶׁבֶת הַמֶּלֶךְ אֲחַשְׁוֵרוֹשׁ עַל כִּסֵּא מַלְכוּתוֹ.
+        וַיְהִי בִּימֵי אֲחַשְׁוֵרוֹשׁ הוּא אֲחַשְׁוֵרוֹשׁ הַמֹּלֵךְ מֵהֹדּוּ וְעַד כּוּשׁ. בַּיָּמִים הָהָם כְּשֶׁבֶת הַמֶּלֶךְ אֲחַשְׁוֵרוֹשׁ עַל כִּסֵּא מַלְכוּתוֹ.
         בְּרֵאשִׁית בָּרָא אֱלֹהִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ. וְהָאָרֶץ הָיְתָה תֹהוּ וָבֹהוּ וְחֹשֶׁךְ עַל פְּנֵי תְהוֹם וְרוּחַ אֱלֹהִים מְרַחֶפֶת עַל פְּנֵי הַמָּיִם.
         וַיֹּאמֶר אֱלֹהִים יְהִי אוֹר וַיְהִי אוֹר. וַיַּרְא אֱלֹהִים אֶת הָאוֹר כִּי טוֹב וַיַּבְדֵּל אֱלֹהִים בֵּין הָאוֹר וּבֵין הַחֹשֶׁךְ.
         הַתְּפִלָּה הִיא עֲבוֹדַת הַלֵּב, וְהִיא עִקַּר הָעֲבוֹדָה שֶׁבַּלֵּב. בִּזְמַן שֶׁבֵּית הַמִּקְדָּשׁ הָיָה קַיָּם, הָיְתָה הָעֲבוֹדָה בְּקָרְבָּנוֹת.

@@ -144,23 +144,42 @@ class DocumentProcessor:
         return matches
 
     def _count_bold_parts(self, text: str) -> int:
-        """Count number of bold parts in text (marked with <b></b>)"""
-        return len(re.findall(r'<b>.*?</b>', text))
+        """Count number of bold parts in text (marked with bCs XML tag)"""
+        # Look for bCs tag in XML
+        return len(re.findall(r'<w:bCs[^>]*>', text))
 
     def prepare_for_nikud(self, source_section: Section, target_section: Section) -> Dict:
         """Prepare content for sending to Gemini for nikud"""
-        bold_count = self._count_bold_parts(target_section.content)
-        st_log.log(f"מזהה חלקים מודגשים בחלק {target_section.header}... זוהו {bold_count} חלקים", "��")
+        # Check for Complex Script bold formatting in XML
+        xml_content = target_section.content
+        bold_count = self._count_bold_parts(xml_content)
+        st_log.log(f"מזהה חלקים מודגשים בחלק {target_section.header} לפי תגי XML... זוהו {bold_count} חלקים", "")
         
-        # Debug logs
+        # Only send the main content from source (200+ chars paragraph)
+        if not source_section.main_content:
+            st_log.log("⚠️ אזהרה: לא נמצא תוכן מקור מתאים", "⚠️")
+            return None
+            
+        # Extract and find bold words in target
+        bold_words = re.findall(r'<b>(.*?)</b>', target_section.content)
+        bold_words_count = len(bold_words)
+        
+        if bold_words_count == 0:
+            st_log.log("⚠️ אזהרה: לא נמצאו מילים מודגשות בתוכן היעד", "⚠️")
+            return None
+        
+        st_log.log(f"נמצאו {bold_words_count} מילים/קטעים מודגשים ביעד", "🔍")
+        
         st_log.log("=== תוכן מקור ===", "📄")
-        st_log.log(source_section.main_content[:200] + "...", "📝")
+        st_log.log(source_section.main_content, "📝")
         st_log.log("=== תוכן יעד ===", "📄")
-        st_log.log(target_section.content[:200] + "...", "📝")
+        st_log.log(target_section.content[:200] + "..." if len(target_section.content) > 200 else target_section.content, "📝")
         
         return {
-            "source_content": source_section.main_content,
+            "source_content": source_section.main_content,  # Only the substantial paragraph
             "target_content": target_section.content,
             "source_header": source_section.header,
-            "target_header": target_section.header
+            "target_header": target_section.header,
+            "xml_content": True,  # Flag to indicate we're dealing with XML formatting
+            "bold_words_count": bold_words_count  # Count of bold words to verify in result
         } 

@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from typing import Tuple, Dict
 from docx import Document
+from docx.oxml import OxmlElement
 import re
 
 from .document_processor import DocumentProcessor
@@ -9,10 +10,10 @@ from .gemini_service import GeminiService
 from .usage_logger import streamlit_logger as st_log
 
 class NikudService:
-    def __init__(self):
+    def __init__(self, gemini_api_key: str = None):
         self.logger = logging.getLogger(__name__)
         self.doc_processor = DocumentProcessor()
-        self.gemini = GeminiService()
+        self.gemini = GeminiService(api_key=gemini_api_key)
         
     def _read_docx(self, file_path: str) -> Tuple[str, Document]:
         """Read DOCX file and extract text while preserving bold formatting"""
@@ -28,28 +29,54 @@ class NikudService:
             last_was_bold = False
             
             for run in para.runs:
-                if run.bold:
+                # Check only for Complex Script bold (w:bCs) in XML
+                rPr = run._r.get_or_add_rPr()
+                is_bold = bool(rPr.xpath('.//w:bCs'))
+                run_text = run.text
+                
+                # Skip wrapping if it's just whitespace
+                if run_text.strip() == "":
+                    if last_was_bold and current_bold_text:
+                        # Don't end bold section on whitespace - might continue
+                        current_bold_text += run_text
+                    else:
+                        para_text += run_text
+                    continue
+                
+                if is_bold:
                     if not last_was_bold:  # Start of bold section
-                        current_bold_text = run.text
+                        current_bold_text = run_text
                     else:  # Continue bold section
-                        current_bold_text += run.text
+                        current_bold_text += run_text
                     last_was_bold = True
                 else:
                     if last_was_bold:  # End of bold section
-                        para_text += f"<b>{current_bold_text}</b>"
+                        # Only wrap if there's actual content
+                        if current_bold_text.strip():
+                            para_text += f"<b>{current_bold_text}</b>"
+                            bold_count += 1
+                        else:
+                            para_text += current_bold_text
                         current_bold_text = ""
-                        bold_count += 1
-                    para_text += run.text
+                    para_text += run_text
                     last_was_bold = False
             
             # Handle any remaining bold text at end of paragraph
             if last_was_bold and current_bold_text:
-                para_text += f"<b>{current_bold_text}</b>"
-                bold_count += 1
+                # Only wrap if there's actual content
+                if current_bold_text.strip():
+                    para_text += f"<b>{current_bold_text}</b>"
+                    bold_count += 1
+                else:
+                    para_text += current_bold_text
             
             text += para_text + "\n"
         
         st_log.log(f"זוהו {bold_count} קטעים מודגשים", "🔍")
+        
+        # Clean up multiple adjacent bold tags
+        text = re.sub(r'</b>\s*<b>', '', text)
+        
         return text, doc
     
     def _write_docx(self, content: str, template_doc: Document, output_path: str):
@@ -85,11 +112,13 @@ class NikudService:
                     # Bold text - extract content between tags
                     text = re.search(r'<b>(.*?)</b>', part).group(1)
                     run = para.add_run(text)
-                    run.bold = True
                     
-                    # Set run direction
+                    # Set run direction and Complex Script bold only
                     rPr = run._r.get_or_add_rPr()
                     rPr.set('rtl', '1')
+                    # Add w:bCs
+                    bCs = OxmlElement('w:bCs')
+                    rPr.append(bCs)
                 else:
                     # Regular text
                     if part.strip():
@@ -106,9 +135,26 @@ class NikudService:
             st_log.log(f"שגיאה בשמירת המסמך: {str(e)}", "❌")
             raise
 
-    def process_files(self, source_path: str, target_path: str, output_path: str):
+    def process_files(self, source_path: str, target_path: str, output_path: str, create_debug_file: bool = False):
         """Process source and target files to add nikud"""
         st_log.log("מתחיל תהליך הוספת ניקוד", "🚀")
+        
+        # Create report file
+        report_path = output_path.replace('.docx', '_report.txt')
+        with open(report_path, 'w', encoding='utf-8') as report_file:
+            report_file.write(f"דוח עיבוד ניקוד\n")
+            report_file.write(f"==============\n\n")
+            report_file.write(f"קובץ מקור: {source_path}\n")
+            report_file.write(f"קובץ יעד: {target_path}\n")
+            report_file.write(f"קובץ פלט: {output_path}\n\n")
+        
+        # Create debug file if requested
+        debug_path = None
+        if create_debug_file:
+            debug_path = output_path.replace('.docx', '_debug.txt')
+            with open(debug_path, 'w', encoding='utf-8') as debug_file:
+                debug_file.write(f"קובץ דיבוג לתהליך הניקוד\n")
+                debug_file.write(f"======================\n\n")
         
         # Read files
         st_log.log("קורא קבצים...", "📂")
@@ -119,15 +165,59 @@ class NikudService:
         source_sections = self.doc_processor.split_to_sections(source_text)
         target_sections = self.doc_processor.split_to_sections(target_text)
         
+        # Add to report
+        self._append_to_report(report_path, f"נמצאו {len(source_sections)} חלקים במקור\n")
+        self._append_to_report(report_path, f"נמצאו {len(target_sections)} חלקים ביעד\n\n")
+        
         # Find matching sections
         matches = self.doc_processor.find_matching_sections(source_sections, target_sections)
+        self._append_to_report(report_path, f"נמצאו {len(matches)} התאמות בין חלקי המסמכים\n\n")
         
         # Process each match with Gemini
         st_log.log("מעבד חלקים...", "⚙️")
         processed_sections = {}
         for source_section, target_section in matches:
             content = self.doc_processor.prepare_for_nikud(source_section, target_section)
-            processed_content = self.gemini.add_nikud(content)
+            if not content:
+                continue
+            
+            self._append_to_report(report_path, f"מעבד חלק: {target_section.header}\n")
+            self._append_to_report(report_path, f"נמצאו {content.get('bold_words_count', 0)} מילים/קטעים מודגשים בחלק זה\n")
+            
+            # Add debug information if requested
+            if debug_path:
+                self._append_to_debug(debug_path, f"\n\n{'='*50}\n")
+                self._append_to_debug(debug_path, f"חלק: {target_section.header}\n")
+                self._append_to_debug(debug_path, f"{'='*50}\n\n")
+                self._append_to_debug(debug_path, "טקסט מקור (מנוקד):\n\n")
+                self._append_to_debug(debug_path, f"{content['source_content']}\n\n")
+                self._append_to_debug(debug_path, "טקסט יעד (עם תגי <b>):\n\n")
+                self._append_to_debug(debug_path, f"{content['target_content']}\n\n")
+            
+            processed_content = self.gemini.add_nikud(content, report_path)
+            
+            # Add debug information for processed content
+            if debug_path:
+                self._append_to_debug(debug_path, "תוצאה (אחרי עיבוד):\n\n")
+                self._append_to_debug(debug_path, f"{processed_content}\n\n")
+            
+            # Validate that only bold text has nikud
+            if not self._validate_nikud_in_bold_only(processed_content):
+                st_log.log(f"⚠️ אזהרה: זוהה ניקוד בטקסט שאינו מודגש בחלק {target_section.header}", "⚠️")
+                self._append_to_report(report_path, f"⚠️ זוהה ניקוד בטקסט שאינו מודגש - מבצע תיקון\n")
+                # Try to fix by removing nikud from non-bold text
+                processed_content = self._fix_nikud_overflow(processed_content)
+            else:
+                self._append_to_report(report_path, f"✅ הניקוד נוסף בהצלחה רק לחלקים המודגשים\n")
+            
+            # Save sample of processed content to report
+            bold_samples = re.findall(r'<b>(.*?)</b>', processed_content)[:3]  # Get up to 3 bold samples
+            if bold_samples:
+                self._append_to_report(report_path, f"דוגמאות לטקסט מנוקד:\n")
+                for i, sample in enumerate(bold_samples, 1):
+                    self._append_to_report(report_path, f"{i}. <b>{sample}</b>\n")
+            
+            self._append_to_report(report_path, "\n")
             processed_sections[target_section.header] = processed_content
             
         # Reconstruct document
@@ -141,7 +231,68 @@ class NikudService:
                 
         # Write output
         self._write_docx('\n'.join(final_content), target_doc, output_path)
-        st_log.log("המסמך נשמר בהצלחה", "💾")
+        
+        # Final report
+        self._append_to_report(report_path, f"סיכום:\n")
+        self._append_to_report(report_path, f"- סך הכל עובדו {len(processed_sections)} חלקים\n")
+        self._append_to_report(report_path, f"- המסמך המנוקד נשמר בהצלחה: {output_path}\n")
+        self._append_to_report(report_path, f"- דוח זה נשמר בהצלחה: {report_path}\n")
+        if debug_path:
+            self._append_to_report(report_path, f"- קובץ דיבוג נשמר בנתיב: {debug_path}\n")
+        
+        st_log.log(f"המסמך נשמר בהצלחה בנתיב: {output_path}", "💾")
+        st_log.log(f"דוח עיבוד נשמר בנתיב: {report_path}", "📝")
+        if debug_path:
+            st_log.log(f"קובץ דיבוג נשמר בנתיב: {debug_path}", "🔍")
+
+    def _append_to_report(self, report_path: str, text: str):
+        """Append text to the report file"""
+        with open(report_path, 'a', encoding='utf-8') as report_file:
+            report_file.write(text)
+
+    def _append_to_debug(self, debug_path: str, text: str):
+        """Append text to the debug file"""
+        with open(debug_path, 'a', encoding='utf-8') as debug_file:
+            debug_file.write(text)
+
+    def _validate_nikud_in_bold_only(self, text: str) -> bool:
+        """Validate that nikud appears only in bold text"""
+        # Define nikud pattern
+        nikud_pattern = r'[\u05B0-\u05BC\u05C1-\u05C2\u05C4-\u05C5\u05C7]'
+        
+        # Split text by bold tags
+        parts = re.split(r'(<b>.*?</b>)', text)
+        
+        for part in parts:
+            if not part.startswith('<b>') and re.search(nikud_pattern, part):
+                # Found nikud in non-bold text
+                return False
+            
+        return True
+
+    def _fix_nikud_overflow(self, text: str) -> str:
+        """Fix text by removing nikud from non-bold parts"""
+        # Define nikud pattern
+        nikud_pattern = r'[\u05B0-\u05BC\u05C1-\u05C2\u05C4-\u05C5\u05C7]'
+        
+        # Split text by bold tags
+        parts = re.split(r'(<b>.*?</b>)', text)
+        
+        result = []
+        for part in parts:
+            if part.startswith('<b>'):
+                # Keep bold parts as is
+                result.append(part)
+            else:
+                # Remove nikud from non-bold parts
+                clean_part = re.sub(nikud_pattern, '', part)
+                result.append(clean_part)
+            
+        # Remove <br> tags as they're unnecessary
+        result_text = ''.join(result)
+        result_text = result_text.replace('<br>', '')
+        
+        return result_text
 
     def add_nikud(self, text: str) -> str:
         """
