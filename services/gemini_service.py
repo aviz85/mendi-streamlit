@@ -1,3 +1,10 @@
+"""
+Gemini Service - Integration with Google's Gemini AI for text processing
+
+This module provides integration with Google's Gemini AI service for processing
+Hebrew text, particularly for adding vocalization (nikud) to bold text segments.
+"""
+
 import os
 import google.generativeai as genai
 from typing import Dict
@@ -8,7 +15,12 @@ from .usage_logger import streamlit_logger as st_log
 import streamlit as st
 
 def setup_logger():
-    """Setup detailed logging to both file and console"""
+    """
+    Setup detailed logging to both file and console
+    
+    Returns:
+        Configured logger instance
+    """
     logger = logging.getLogger('GeminiService')
     logger.setLevel(logging.INFO)
     
@@ -32,7 +44,21 @@ def setup_logger():
     return logger
 
 class GeminiService:
+    """
+    Service for integrating with Google's Gemini AI model
+    
+    This class provides functionality to connect to the Gemini API
+    and use it for processing Hebrew text, particularly for adding
+    vocalization marks (nikud) to specific parts of text.
+    """
+    
     def __init__(self, api_key: str = None):
+        """
+        Initialize the Gemini service
+        
+        Parameters:
+            api_key: Optional Gemini API key (will check environment variables if not provided)
+        """
         self.logger = setup_logger()
         
         # Try to get API key from different sources
@@ -61,7 +87,7 @@ class GeminiService:
         }
         
         self.model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash",
+            model_name="gemini-2.5-pro-preview-03-25",
             generation_config=generation_config,
             system_instruction="""אתה מערכת טכנית לניקוד טקסט עברי. תפקידך הוא אך ורק:
 1. לקבל טקסט מקור מנוקד (החלק העיקרי בלבד)
@@ -98,9 +124,19 @@ class GeminiService:
         
         self.chat_session = self.model.start_chat()
         st_log.log("שירות Gemini מוכן", "✅")
+        self.logger.info("✅ Using model: gemini-2.5-pro-preview-03-25")
 
     def add_nikud(self, content: Dict, report_path: str = None) -> str:
-        """Process content through Gemini to add nikud"""
+        """
+        Process content through Gemini to add nikud to bold sections
+        
+        Parameters:
+            content: Dictionary containing source and target content information
+            report_path: Optional path to save processing report
+            
+        Returns:
+            Processed text with nikud added to bold sections
+        """
         st_log.log(f"מעבד חלק: {content['target_header']}", "📝")
         
         # Check if target content is too large (more than 100,000 chars)
@@ -163,7 +199,16 @@ class GeminiService:
         return response.text
         
     def _process_large_content(self, content: Dict, report_path: str = None) -> str:
-        """Process large content by splitting it into chunks and processing each chunk"""
+        """
+        Process large content by splitting it into manageable chunks
+        
+        Parameters:
+            content: Dictionary containing source and target content information
+            report_path: Optional path to save processing report
+            
+        Returns:
+            Processed text with nikud added to bold sections
+        """
         source_content = content['source_content']
         target_content = content['target_content']
         target_header = content['target_header']
@@ -183,6 +228,7 @@ class GeminiService:
         bold_tags_per_chunk = max(1, total_bold_tags // chunk_count)
         
         st_log.log(f"מפצל לכ-{chunk_count} חלקים עם ~{bold_tags_per_chunk} תגי <b> בכל חלק", "🔄")
+        self.logger.info(f"Processing large content with model: gemini-2.5-pro-preview-03-25")
         
         # Split content into chunks
         chunks = []
@@ -196,61 +242,33 @@ class GeminiService:
                 # Otherwise, end the chunk after the last bold tag in this group
                 chunk_end = bold_positions[i + bold_tags_per_chunk - 1][1]
             
-            # Extract chunk
+            # Create the chunk
             chunk = target_content[current_chunk_start:chunk_end]
             chunks.append(chunk)
+            
+            # Update start for next chunk
             current_chunk_start = chunk_end
+        
+        st_log.log(f"נוצרו {len(chunks)} חלקים לעיבוד", "📊")
         
         # Process each chunk
         processed_chunks = []
-        
-        for idx, chunk in enumerate(chunks):
-            st_log.log(f"מעבד חלק {idx+1} מתוך {len(chunks)}", "🔄")
+        for i, chunk in enumerate(chunks):
+            st_log.log(f"מעבד חלק {i+1} מתוך {len(chunks)}", "🔄")
             
-            # Create a fresh chat session for each chunk
-            new_session = self.model.start_chat()
-            
-            # Create chunk content dictionary
+            # Create a subset of content dict for this chunk
             chunk_content = {
-                'source_content': source_content,
+                'source_content': source_content,  # Keep the full source content for reference
                 'target_content': chunk,
-                'target_header': f"{target_header} (חלק {idx+1}/{len(chunks)})"
+                'target_header': f"{target_header} (חלק {i+1}/{len(chunks)})"
             }
             
-            # Construct prompt for this chunk
-            prompt = f"""[טקסט מקור (עם ניקוד) - החלק העיקרי]:
-{chunk_content['source_content']}
-
-[חלק {idx+1} מתוך {len(chunks)} של סקשן יעד - יש לשכתב במדויק עם ניקוד בחלקים המודגשים בלבד]:
-{chunk_content['target_content']}
-
-הנחיות חשובות:
-1. העתק את החלק הנ"ל במדויק, מילה במילה, כולל כל ירידות השורה
-2. הוסף ניקוד מלא לכל טקסט שנמצא בין תגיות <b></b> (טקסט מודגש)
-3. ודא שכל מילה מודגשת מקבלת את כל הניקוד הנדרש
-4. השאר את כל שאר הטקסט בדיוק כפי שהוא, ללא שום ניקוד
-5. שמור על כל תגיות ה-HTML במקומן המדויק
-6. שמור על כל ירידות השורה במקומן המדויק - זה קריטי
-7. אל תוסיף תגיות <br> או כל תגית HTML אחרת
-8. אל תשנה את סדר המילים או התוכן
-9. טקסט שאינו מודגש חייב להישאר ללא ניקוד, אפילו אם הוא זהה לטקסט מנוקד במקור
-10. חפש בטקסט המקור את המילים הדומות ביותר למילים המודגשות כדי להוסיף להן ניקוד מתאים"""
-            
-            # Log chunk info
-            if report_path:
-                with open(report_path, 'a', encoding='utf-8') as report_file:
-                    report_file.write("\n" + "="*50 + "\n")
-                    report_file.write(f"CHUNK {idx+1}/{len(chunks)} FOR SECTION {target_header}:\n")
-                    report_file.write("="*50 + "\n")
-                    report_file.write(f"[Chunk length: {len(chunk)} chars]\n")
-                    report_file.write("="*50 + "\n")
-            
-            # Send chunk to Gemini
-            response = new_session.send_message(prompt)
-            processed_chunks.append(response.text)
+            # Process this chunk
+            processed_chunk = self.add_nikud(chunk_content, report_path)
+            processed_chunks.append(processed_chunk)
             
         # Combine processed chunks
-        st_log.log(f"משלב {len(processed_chunks)} חלקים מעובדים", "🔄")
         combined_content = ''.join(processed_chunks)
+        st_log.log(f"סיים עיבוד כל החלקים", "✅")
         
         return combined_content 

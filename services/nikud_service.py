@@ -1,6 +1,14 @@
+"""
+Nikud Service - Handle Hebrew vocalization (nikud) in text
+
+This module provides functionality for handling Hebrew vocalization (nikud) marks.
+It includes functions for removing nikud, adding nikud, and converting between
+different forms of Hebrew text with or without nikud.
+"""
+
 import logging
 from pathlib import Path
-from typing import Tuple, Dict
+from typing import Tuple, Dict, List
 from docx import Document
 from docx.oxml import OxmlElement
 import re
@@ -10,13 +18,35 @@ from .gemini_service import GeminiService
 from .usage_logger import streamlit_logger as st_log
 
 class NikudService:
+    """
+    Service for handling Hebrew vocalization (nikud) in documents
+    
+    This class provides methods for processing DOCX files with Hebrew text,
+    handling vocalization marks, and merging content between files while
+    preserving formatting and nikud.
+    """
+    
     def __init__(self, gemini_api_key: str = None):
+        """
+        Initialize the nikud service
+        
+        Parameters:
+            gemini_api_key: Optional API key for Gemini AI service
+        """
         self.logger = logging.getLogger(__name__)
         self.doc_processor = DocumentProcessor()
         self.gemini = GeminiService(api_key=gemini_api_key)
         
     def _read_docx(self, file_path: str) -> Tuple[str, Document]:
-        """Read DOCX file and extract text while preserving bold formatting"""
+        """
+        Read DOCX file and extract text while preserving bold formatting
+        
+        Parameters:
+            file_path: Path to the DOCX file
+            
+        Returns:
+            Tuple containing the extracted text with HTML bold tags and the Document object
+        """
         doc = Document(file_path)
         text = ""
         bold_count = 0
@@ -79,8 +109,36 @@ class NikudService:
         
         return text, doc
     
+    def _read_docx_raw(self, file_path: str) -> Tuple[List[str], Document]:
+        """
+        Read DOCX file and return raw paragraphs without HTML conversion
+        
+        Parameters:
+            file_path: Path to the DOCX file
+            
+        Returns:
+            Tuple containing a list of raw paragraph texts and the Document object
+        """
+        doc = Document(file_path)
+        paragraphs_raw = []
+        
+        st_log.log(f"קורא קובץ כפסקאות גולמיות: {file_path}", "📖")
+        
+        # Extract raw paragraphs
+        for para in doc.paragraphs:
+            paragraphs_raw.append(para.text)
+            
+        return paragraphs_raw, doc
+        
     def _write_docx(self, content: str, template_doc: Document, output_path: str):
-        """Write content back to DOCX preserving all formatting"""
+        """
+        Write content back to DOCX preserving all formatting
+        
+        Parameters:
+            content: Text content with HTML tags
+            template_doc: Template document to copy styles from
+            output_path: Path to save the output document
+        """
         doc = Document()
         
         # Copy styles from template
@@ -144,8 +202,78 @@ class NikudService:
             st_log.log(f"שגיאה בשמירת המסמך: {str(e)}", "❌")
             raise
 
+    def _convert_paragraphs_to_html_formatted_text(self, paragraphs: List[str], doc: Document) -> str:
+        """
+        Convert raw paragraphs to HTML formatted text with bold tags
+        
+        Parameters:
+            paragraphs: List of raw paragraph texts
+            doc: Document object containing formatting information
+            
+        Returns:
+            HTML formatted text with bold tags
+        """
+        html_formatted_text = ""
+        bold_count = 0
+        
+        # Map paragraph indices to the actual paragraph objects
+        doc_paragraphs = doc.paragraphs
+        
+        for i, para_text in enumerate(paragraphs):
+            if i < len(doc_paragraphs):  # Safety check
+                para = doc_paragraphs[i]
+                html_para = ""
+                
+                # Skip if paragraph has no content
+                if not para_text.strip():
+                    html_formatted_text += "\n"
+                    continue
+                
+                # Track start and end positions for each run
+                position = 0
+                for run in para.runs:
+                    run_text = run.text
+                    if not run_text:
+                        continue
+                    
+                    # Check if bold
+                    rPr = run._r.get_or_add_rPr()
+                    is_bold = bool(rPr.xpath('.//w:bCs'))
+                    
+                    if is_bold and run_text.strip():
+                        html_para += f"<b>{run_text}</b>"
+                        bold_count += 1
+                    else:
+                        html_para += run_text
+                    
+                    position += len(run_text)
+                
+                html_formatted_text += html_para + "\n"
+            else:
+                # Fallback if we somehow have more paragraphs than in the document
+                html_formatted_text += para_text + "\n"
+        
+        st_log.log(f"זוהו {bold_count} קטעים מודגשים", "🔍")
+        
+        # Clean up multiple adjacent bold tags
+        html_formatted_text = re.sub(r'</b>\s*<b>', '', html_formatted_text)
+        
+        return html_formatted_text
+
     def process_files(self, source_path: str, target_path: str, output_path: str, create_debug_file: bool = False):
-        """Process source and target files to add nikud"""
+        """
+        Process source and target files to add nikud
+        
+        This method processes a source document (without nikud) and a target document 
+        (with nikud), identifies matching sections, and creates a new document with 
+        the formatting of the source document but with nikud from the target document.
+        
+        Parameters:
+            source_path: Path to the source file (without nikud)
+            target_path: Path to the target file (with nikud)
+            output_path: Path to save the processed file
+            create_debug_file: Whether to create a debug file with additional information
+        """
         st_log.log("מתחיל תהליך הוספת ניקוד", "🚀")
         
         # Create report file
@@ -165,14 +293,25 @@ class NikudService:
                 debug_file.write(f"קובץ דיבוג לתהליך הניקוד\n")
                 debug_file.write(f"======================\n\n")
         
-        # Read files
+        # Read files - first as raw paragraphs
         st_log.log("קורא קבצים...", "📂")
-        source_text, source_doc = self._read_docx(source_path)
-        target_text, target_doc = self._read_docx(target_path)
+        source_paragraphs, source_doc = self._read_docx_raw(source_path)
+        target_paragraphs, target_doc = self._read_docx_raw(target_path)
         
-        # Split to sections
-        source_sections = self.doc_processor.split_to_sections(source_text)
-        target_sections = self.doc_processor.split_to_sections(target_text)
+        # Log paragraph counts for debugging
+        self._append_to_report(report_path, f"נמצאו {len(source_paragraphs)} פסקאות בקובץ המקור\n")
+        self._append_to_report(report_path, f"נמצאו {len(target_paragraphs)} פסקאות בקובץ היעד\n\n")
+        
+        # First process source documents - split to sections based on raw paragraphs
+        st_log.log("מפצל את המסמך המקורי לחלקים...", "📑")
+        source_sections = self.doc_processor.split_to_sections_from_raw(source_paragraphs)
+        
+        st_log.log("מפצל את מסמך היעד לחלקים...", "📑")
+        target_sections = self.doc_processor.split_to_sections_from_raw(target_paragraphs)
+        
+        # Now convert to HTML format for further processing
+        source_text = self._convert_paragraphs_to_html_formatted_text(source_paragraphs, source_doc)
+        target_text = self._convert_paragraphs_to_html_formatted_text(target_paragraphs, target_doc)
         
         # Add to report
         self._append_to_report(report_path, f"נמצאו {len(source_sections)} חלקים במקור\n")
@@ -236,17 +375,37 @@ class NikudService:
         st_log.log(f"תהליך הוספת הניקוד הושלם. קובץ נשמר ב: {output_path}", "✅")
 
     def _append_to_report(self, report_path: str, text: str):
-        """Append text to the report file"""
+        """
+        Append text to the report file
+        
+        Parameters:
+            report_path: Path to the report file
+            text: Text to append
+        """
         with open(report_path, 'a', encoding='utf-8') as report_file:
             report_file.write(text)
 
     def _append_to_debug(self, debug_path: str, text: str):
-        """Append text to the debug file"""
+        """
+        Append text to the debug file
+        
+        Parameters:
+            debug_path: Path to the debug file
+            text: Text to append
+        """
         with open(debug_path, 'a', encoding='utf-8') as debug_file:
             debug_file.write(text)
 
     def _validate_nikud_in_bold_only(self, text: str) -> bool:
-        """Validate that nikud appears only in bold text"""
+        """
+        Validate that nikud appears only in bold text
+        
+        Parameters:
+            text: Text to validate
+            
+        Returns:
+            True if nikud appears only in bold text, False otherwise
+        """
         # Define nikud pattern
         nikud_pattern = r'[\u05B0-\u05BC\u05C1-\u05C2\u05C4-\u05C5\u05C7]'
         
@@ -261,7 +420,15 @@ class NikudService:
         return True
 
     def _fix_nikud_overflow(self, text: str) -> str:
-        """Fix text by removing nikud from non-bold parts"""
+        """
+        Fix text by removing nikud from non-bold parts
+        
+        Parameters:
+            text: Text to fix
+            
+        Returns:
+            Fixed text with nikud only in bold parts
+        """
         # Define nikud pattern
         nikud_pattern = r'[\u05B0-\u05BC\u05C1-\u05C2\u05C4-\u05C5\u05C7]'
         
@@ -285,7 +452,13 @@ class NikudService:
 
     def add_nikud(self, text: str) -> str:
         """
-        Add nikud to Hebrew text (currently returns dummy data)
+        Add nikud to Hebrew text
+        
+        Parameters:
+            text: Hebrew text without nikud
+            
+        Returns:
+            Hebrew text with nikud added
         """
         words = text.split()
         result = []
@@ -298,6 +471,12 @@ class NikudService:
     def remove_nikud(self, text: str) -> str:
         """
         Remove nikud from Hebrew text
+        
+        Parameters:
+            text: Hebrew text with nikud
+            
+        Returns:
+            Hebrew text without nikud
         """
         # Unicode ranges for nikud marks
         nikud_pattern = r'[\u05B0-\u05BC\u05C1-\u05C2\u05C4-\u05C5\u05C7]'
@@ -307,6 +486,9 @@ class NikudService:
     def test(self) -> Dict[str, bool]:
         """
         Run basic tests with dummy data
+        
+        Returns:
+            Dictionary with test results
         """
         test_cases = {
             "Basic word": {

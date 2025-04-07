@@ -1,121 +1,96 @@
-import json
-from datetime import datetime
-import re
-from pathlib import Path
-from typing import Dict, List, Optional
+"""
+Usage Logger for Streamlit Application
+
+This module provides a logger implementation for tracking and displaying
+user interactions and process events within the Streamlit application.
+"""
+
 import logging
-import streamlit as st
-
-class UsageLogger:
-    PRICING = {
-        "3-5-sonnet": {
-            "input": 3.0,    # $3/MTok
-            "output": 15.0   # $15/MTok
-        },
-        "3-5-haiku": {
-            "input": 1.0,    # $1/MTok
-            "output": 5.0    # $5/MTok
-        },
-        "3-opus": {
-            "input": 15.0,   # $15/MTok
-            "output": 75.0   # $75/MTok
-        }
-    }
-
-    def __init__(self, log_file: str = "data/usage_log.json"):
-        self.log_file = Path(log_file)
-        self.log_file.parent.mkdir(parents=True, exist_ok=True)
-        
-    def _get_model_type(self, model_name: str) -> str:
-        pattern = r"claude-(\d-\d-\w+|\d-\w+)"
-        match = re.search(pattern, model_name)
-        if match:
-            return match.group(1)
-        raise ValueError(f"Unknown model format: {model_name}")
-    
-    def log_usage(self, model_name: str, usage: Dict) -> None:
-        model_type = self._get_model_type(model_name)
-        
-        input_cost = (usage["input_tokens"] / 1_000_000) * self.PRICING[model_type]["input"]
-        output_cost = (usage["output_tokens"] / 1_000_000) * self.PRICING[model_type]["output"]
-        total_cost = input_cost + output_cost
-        
-        log_entry = {
-            "timestamp": datetime.now().isoformat(),
-            "model": model_name,
-            "model_type": model_type,
-            "input_tokens": usage["input_tokens"],
-            "output_tokens": usage["output_tokens"],
-            "cost_usd": total_cost
-        }
-        
-        logs = []
-        if self.log_file.exists():
-            try:
-                logs = json.loads(self.log_file.read_text())
-            except json.JSONDecodeError:
-                logs = []
-        
-        logs.append(log_entry)
-        self.log_file.write_text(json.dumps(logs, indent=2))
-    
-    def get_usage_stats(self) -> Dict:
-        if not self.log_file.exists():
-            return {"total_cost": 0.0, "total_tokens": 0, "calls_count": 0}
-            
-        try:
-            logs = json.loads(self.log_file.read_text())
-            return {
-                "total_cost": sum(log["cost_usd"] for log in logs),
-                "total_tokens": sum(log["input_tokens"] + log["output_tokens"] for log in logs),
-                "calls_count": len(logs),
-                "per_model": self._get_per_model_stats(logs)
-            }
-        except (json.JSONDecodeError, KeyError):
-            return {"total_cost": 0.0, "total_tokens": 0, "calls_count": 0}
-    
-    def _get_per_model_stats(self, logs: List[Dict]) -> Dict:
-        stats = {}
-        for log in logs:
-            model = log["model_type"]
-            if model not in stats:
-                stats[model] = {
-                    "calls": 0,
-                    "total_tokens": 0,
-                    "cost": 0.0
-                }
-            stats[model]["calls"] += 1
-            stats[model]["total_tokens"] += log["input_tokens"] + log["output_tokens"]
-            stats[model]["cost"] += log["cost_usd"]
-        return stats
+import os
+import datetime
+from typing import Optional, List, Dict, Any
+import json
 
 class StreamlitLogger:
-    def __init__(self, placeholder: Optional[st.empty] = None):
-        self.placeholder = placeholder or st.empty()
+    """
+    Logger for Streamlit interface that stores logs and can display them in the UI
+    
+    This logger collects logs with timestamps and categories, and provides methods
+    to display them, retrieve them, or save them to a file.
+    """
+    
+    def __init__(self):
+        """Initialize a new Streamlit logger"""
         self.logs = []
+        self.logger = logging.getLogger(__name__)
+    
+    def log(self, message: str, icon: str = "ℹ️"):
+        """
+        Add a log entry with timestamp and icon
         
-    def log(self, message: str, emoji: str = "ℹ️"):
-        """Add log message with emoji and display in Streamlit"""
-        # Sanitize message to handle potential encoding issues
-        message = self._sanitize_text(message)
-        log_entry = f'<div class="log-entry">{emoji} {message}</div>'
-        self.logs.append(log_entry)
-        self._update_display()
+        Parameters:
+            message: The message to log
+            icon: Icon to display with the message (emoji)
+        """
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        entry = {
+            "timestamp": timestamp,
+            "message": message,
+            "icon": icon
+        }
+        self.logs.append(entry)
         
-    def _sanitize_text(self, text: str) -> str:
-        """Clean text to ensure it's valid for HTML"""
-        # Only escape HTML special characters, preserve Hebrew
-        return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        # Also log to standard logger
+        self.logger.info(f"{icon} {message}")
+    
+    def get_logs(self) -> List[Dict[str, str]]:
+        """
+        Get all log entries
         
-    def _update_display(self):
-        """Update the Streamlit display with all logs"""
-        html = f'<div class="log-container">{"".join(self.logs)}</div>'
-        self.placeholder.markdown(html, unsafe_allow_html=True)
-        
-    def clear(self):
-        """Clear all logs"""
+        Returns:
+            List of log entries
+        """
+        return self.logs
+    
+    def clear_logs(self):
+        """Clear all log entries"""
         self.logs = []
-        self.placeholder.empty()
+        self.log("יומן הפעולות נוקה", "🧹")
+    
+    def save_logs(self, filename: str) -> bool:
+        """
+        Save logs to a file
+        
+        Parameters:
+            filename: The name of the file to save logs to
+            
+        Returns:
+            True if saving was successful, False otherwise
+        """
+        try:
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(self.logs, f, ensure_ascii=False, indent=2)
+            self.log(f"יומן הפעולות נשמר לקובץ: {filename}", "💾")
+            return True
+        except Exception as e:
+            self.log(f"שגיאה בשמירת יומן הפעולות: {str(e)}", "❌")
+            return False
+    
+    def display_logs(self, streamlit_container) -> None:
+        """
+        Display logs in a Streamlit container
+        
+        Parameters:
+            streamlit_container: Streamlit container to display logs in
+        """
+        if not self.logs:
+            streamlit_container.info("אין פעולות מתועדות")
+            return
+            
+        for entry in self.logs:
+            streamlit_container.write(
+                f"**{entry['timestamp']}** {entry['icon']} {entry['message']}"
+            )
 
-# Global logger instance
+# Singleton instance
 streamlit_logger = StreamlitLogger()

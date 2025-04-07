@@ -1,197 +1,222 @@
-import re
-from typing import List, Dict, Tuple, Optional
+"""
+DocumentProcessor - Class for processing and converting documents
+
+This class serves as a coordinator for the document processing workflow, including:
+1. Reading DOCX documents
+2. Analyzing sections and headers
+3. Processing and converting content to different formats
+4. Writing the processed document to a file
+
+The class orchestrates all stages of the process in an organized and coordinated manner.
+"""
+
 import logging
+import os
+from typing import List, Dict, Any, Tuple, Optional, Union
+import tempfile
+
+from docx import Document
+
+from .docx_reader import DocxReader
+from .docx_writer import DocxWriter
+from .section_analyzer import SectionAnalyzer
+from .text_patterns import SectionType
 from .usage_logger import streamlit_logger as st_log
 
-class Section:
-    def __init__(self, header: str, content: str):
-        self.header = header
-        self.content = content
-        self.main_content: Optional[str] = None
-        self.first_sentence: Optional[str] = None
-        self._extract_main_content()
-        
-    def _extract_main_content(self):
-        """Extract main content - first substantial paragraph (100+ chars) and its following paragraphs"""
-        paragraphs = re.split(r'\n\s*\n', self.content)  # Split on one or more blank lines
-        
-        # Find first substantial paragraph (100+ chars)
-        main_content = []
-        found_main = False
-        
-        for para in paragraphs:
-            para = para.strip()
-            if not found_main:
-                if len(para) >= 100:  # Changed from 200 to 100
-                    found_main = True
-                    main_content.append(para)
-                    # Extract first sentence immediately when we find the main paragraph
-                    sentences = re.split('[.!?]', para)
-                    if sentences:
-                        self.first_sentence = sentences[0].strip()
-            else:
-                if not para:  # Stop at first empty paragraph after main content
-                    break
-                main_content.append(para)
-                
-        if main_content:
-            self.main_content = '\n\n'.join(main_content)
-
 class DocumentProcessor:
+    """Class for processing and converting documents"""
+    
     def __init__(self):
+        """Initialize a new document processor"""
         self.logger = logging.getLogger(__name__)
+        self.docx_reader = DocxReader()
+        self.docx_writer = DocxWriter()
+        self.section_analyzer = SectionAnalyzer()
         
-    def _is_hebrew_letter_line(self, line: str) -> bool:
-        """Check if line contains only 1-3 Hebrew letters"""
-        # Remove whitespace
-        line = line.strip()
-        # Check if contains only Hebrew letters
-        hebrew_pattern = re.compile(r'^[\u0590-\u05FF]{1,3}$')
-        return bool(hebrew_pattern.match(line))
-
-    def split_to_sections(self, text: str) -> List[Section]:
-        """Split document into sections based on Hebrew letter delimiters"""
-        sections = []
-        current_header = ""
-        current_content = []
+    def process_document(self, input_file_path: str, output_file_path: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Process a DOCX document and return its processed structure
         
-        st_log.log("מפצל את המסמך לחלקים...", "��")
-        
-        # Split while preserving all newlines
-        lines = text.split('\n')
-        for i, line in enumerate(lines):
-            if self._is_hebrew_letter_line(line):
-                # Save previous section if exists
-                if current_content:
-                    # Join with original newlines
-                    content = ""
-                    for j, content_line in enumerate(current_content):
-                        content += content_line
-                        # Add original number of newlines after each line
-                        if j < len(current_content) - 1:
-                            next_non_empty = next((l for l in lines[i:] if l.strip()), None)
-                            newlines = 1
-                            if not next_non_empty:
-                                newlines = 2
-                            content += '\n' * newlines
-                    sections.append(Section(current_header, content))
-                    st_log.log(f"נמצא חלק: {line}", "📎")
-                current_header = line
-                current_content = []
-            else:
-                current_content.append(line)
-                
-        # Add last section
-        if current_content:
-            content = ""
-            for j, line in enumerate(current_content):
-                content += line
-                if j < len(current_content) - 1:
-                    content += '\n'
-            sections.append(Section(current_header, content))
+        Parameters:
+            input_file_path: Path to the input file
+            output_file_path: Path to save the processed file (optional)
             
-        st_log.log(f"נמצאו {len(sections)} חלקים", "✅")
-        return sections
-
-    def normalize_text(self, text: str) -> str:
-        """Normalize text by removing nikud and optionally removing אהוי"""
-        # Remove nikud
-        text = re.sub(r'[\u05B0-\u05BC\u05C1-\u05C2\u05C4-\u05C5\u05C7]', '', text)
-        # Keep spaces
-        return text
-
-    def _calculate_similarity(self, text1: str, text2: str) -> float:
-        """Calculate similarity between two texts using character ratio"""
-        longer = max(len(text1), len(text2))
-        shorter = min(len(text1), len(text2))
-        return shorter / longer if longer > 0 else 0
-
-    def find_matching_sections(self, source_sections: List[Section], 
-                             target_sections: List[Section],
-                             similarity_threshold: float = 0.7) -> List[Tuple[Section, Section]]:
-        """Find matching sections between source and target by comparing content"""
-        matches = []
+        Returns:
+            Dictionary containing the processed structure of the document and additional information
+        """
+        st_log.log(f"מתחיל עיבוד מסמך: {os.path.basename(input_file_path)}", "📄")
         
-        st_log.log("מחפש התאמות בין חלקי המסמכים...", "🔍")
+        # Read DOCX file
+        paragraphs, doc = self.docx_reader.read_docx_raw(input_file_path)
         
-        for source_section in source_sections:
-            if not source_section.main_content:  # Skip if no substantial paragraph found
-                continue
-                
-            source_normalized = self.normalize_text(source_section.main_content)
-            # Backup for just the first sentence comparison 
-            source_first_sentence = self.normalize_text(source_section.first_sentence) if source_section.first_sentence else ""
+        if not paragraphs:
+            st_log.log("לא נמצאו פסקאות במסמך", "⚠️")
+            return {"error": "לא נמצאו פסקאות במסמך"}
             
-            best_match = None
-            best_score = 0
+        # Analyze sections
+        sections = self.section_analyzer.split_to_sections(paragraphs)
+        
+        # Get base statistics
+        stats = {
+            "paragraphs_count": len(paragraphs),
+            "sections_count": self._count_sections(sections),
+            "bold_segments": self._count_bold_segments(input_file_path)
+        }
+        
+        # Process the output file if needed
+        if output_file_path:
+            self._save_processed_document(sections, doc, output_file_path)
             
-            for target_section in target_sections:
-                if not target_section.main_content:  # Skip if no substantial paragraph found
-                    continue
+        # Return the processed structure
+        result = {
+            "sections": sections,
+            "stats": stats,
+            "output_file": output_file_path
+        }
+        
+        st_log.log(f"עיבוד המסמך הושלם: {stats['paragraphs_count']} פסקאות, {stats['sections_count']} סעיפים", "✅")
+        return result
+        
+    def _count_sections(self, sections: List[Dict[str, Any]]) -> int:
+        """
+        Count the number of sections (including subsections) in the section structure
+        
+        Parameters:
+            sections: Section structure created by SectionAnalyzer
+            
+        Returns:
+            Total number of sections
+        """
+        count = 0
+        
+        def count_recursive(section_list):
+            nonlocal count
+            for section in section_list:
+                # Count this section
+                count += 1
+                # Count children recursively
+                if "children" in section and section["children"]:
+                    count_recursive(section["children"])
                     
-                target_normalized = self.normalize_text(target_section.main_content)
-                target_first_sentence = self.normalize_text(target_section.first_sentence) if target_section.first_sentence else ""
-                
-                # Calculate two types of similarity
-                # 1. Full content similarity (gives a broader match)
-                content_score = self._calculate_similarity(source_normalized, target_normalized)
-                
-                # 2. First sentence similarity (more precise for beginning of paragraphs)
-                first_sentence_score = 0
-                if source_first_sentence and target_first_sentence:
-                    first_sentence_score = self._calculate_similarity(source_first_sentence, target_first_sentence)
-                
-                # Use the better of the two scores
-                score = max(content_score, first_sentence_score)
-                
-                if score > best_score and score >= similarity_threshold:
-                    best_score = score
-                    best_match = target_section
+        count_recursive(sections)
+        return count
+        
+    def _count_bold_segments(self, file_path: str) -> int:
+        """
+        Count the number of bold segments in the document
+        
+        Parameters:
+            file_path: Path to the document file
             
-            if best_match:
-                matches.append((source_section, best_match))
-                st_log.log(f"נמצאה התאמה: {source_section.header} ↔️ {best_match.header} ({best_score:.0%})", "✨")
+        Returns:
+            Number of bold segments
+        """
+        # Use DocxReader to get bold segments count
+        html_content, bold_count = self.docx_reader.read_docx_html(file_path)
+        return bold_count
         
-        st_log.log(f"נמצאו {len(matches)} התאמות", "✅")
-        return matches
-
-    def _count_bold_parts(self, text: str) -> int:
-        """Count number of bold parts in text (marked with bCs XML tag)"""
-        # Look for bCs tag in XML
-        return len(re.findall(r'<w:bCs[^>]*>', text))
-
-    def prepare_for_nikud(self, source_section: Section, target_section: Section) -> Dict:
-        """Prepare content for sending to Gemini for nikud"""
-        # Check for Complex Script bold formatting in XML
-        xml_content = target_section.content
-        bold_count = self._count_bold_parts(xml_content)
-        st_log.log(f"מזהה חלקים מודגשים בחלק {target_section.header} לפי תגי XML... זוהו {bold_count} חלקים", "")
+    def _save_processed_document(self, sections: List[Dict[str, Any]], 
+                               original_doc: Document, output_path: str):
+        """
+        Save the processed document to a DOCX file
         
-        # Only send the main content from source (200+ chars paragraph)
-        if not source_section.main_content:
-            st_log.log("⚠️ אזהרה: לא נמצא תוכן מקור מתאים", "⚠️")
-            return None
+        Parameters:
+            sections: Processed section structure
+            original_doc: Original Document object (for preserving styles)
+            output_path: Path to save the file
+        """
+        # Convert sections to HTML format (with bold tags)
+        content = self._sections_to_html(sections)
+        
+        # Write to output file
+        try:
+            self.docx_writer.write_docx(content, original_doc, output_path)
+            st_log.log(f"המסמך המעובד נשמר בהצלחה: {os.path.basename(output_path)}", "💾")
+        except Exception as e:
+            st_log.log(f"שגיאה בשמירת המסמך: {str(e)}", "❌")
+            raise
             
-        # Extract and find bold words in target
-        bold_words = re.findall(r'<b>(.*?)</b>', target_section.content)
-        bold_words_count = len(bold_words)
+    def _sections_to_html(self, sections: List[Dict[str, Any]]) -> str:
+        """
+        Convert the section structure to HTML format with support for <b> tags
         
-        if bold_words_count == 0:
-            st_log.log("⚠️ אזהרה: לא נמצאו מילים מודגשות בתוכן היעד", "⚠️")
-            return None
+        Parameters:
+            sections: Section structure
+            
+        Returns:
+            HTML string representing the entire document
+        """
+        result = []
         
-        st_log.log(f"נמצאו {bold_words_count} מילים/קטעים מודגשים ביעד", "🔍")
+        def process_section(section, level=0):
+            # Add title (with appropriate formatting)
+            if section["title"]:
+                # Make titles bold
+                if level == 0:  # Main title
+                    result.append(f"<b>{section['title']}</b>")
+                else:
+                    result.append(f"<b>{section['title']}</b> {section['text']}")
+            # Add text (if not already added with title)
+            elif section["text"]:
+                result.append(section["text"])
+                
+            # Process children with increased level
+            if "children" in section and section["children"]:
+                for child in section["children"]:
+                    process_section(child, level + 1)
+                    
+        # Process all sections
+        for section in sections:
+            process_section(section)
+            
+        # Join with newlines
+        return "\n".join(result)
         
-        st_log.log("=== תוכן מקור ===", "📄")
-        st_log.log(source_section.main_content, "📝")
-        st_log.log("=== תוכן יעד ===", "📄")
-        st_log.log(target_section.content[:200] + "..." if len(target_section.content) > 200 else target_section.content, "📝")
+    def create_preview(self, sections: List[Dict[str, Any]]) -> str:
+        """
+        Create a preview of the processed document in HTML format
         
-        return {
-            "source_content": source_section.main_content,  # Only the substantial paragraph
-            "target_content": target_section.content,
-            "source_header": source_section.header,
-            "target_header": target_section.header,
-            "xml_content": True,  # Flag to indicate we're dealing with XML formatting
-            "bold_words_count": bold_words_count  # Count of bold words to verify in result
-        } 
+        Parameters:
+            sections: Section structure
+            
+        Returns:
+            HTML string for display
+        """
+        result = ["<div class='document-preview'>"]
+        
+        def process_section(section, level=0):
+            # Add title with appropriate heading
+            if section["title"]:
+                heading_level = min(level + 1, 6)  # h1 to h6
+                
+                if level == 0:  # Main title
+                    result.append(f"<h{heading_level} class='doc-title'>{section['title']}</h{heading_level}>")
+                else:
+                    # Add section title with appropriate class based on section type
+                    section_class = section["type"].name.lower() if "type" in section else "other"
+                    result.append(f"<div class='section-header section-{section_class}'>")
+                    result.append(f"<h{heading_level}>{section['title']}</h{heading_level}>")
+                    result.append("</div>")
+                    
+                    # Add section text
+                    if section["text"]:
+                        result.append(f"<div class='section-content'>{section['text']}</div>")
+            # Add text (if not already added with title)
+            elif section["text"]:
+                result.append(f"<div class='section-content'>{section['text']}</div>")
+                
+            # Process children with increased level
+            if "children" in section and section["children"]:
+                result.append("<div class='section-children'>")
+                for child in section["children"]:
+                    process_section(child, level + 1)
+                result.append("</div>")
+                    
+        # Process all sections
+        for section in sections:
+            process_section(section)
+            
+        result.append("</div>")
+        
+        # Join with newlines
+        return "\n".join(result)
