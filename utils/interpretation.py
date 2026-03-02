@@ -7,7 +7,7 @@ from prompt_template import SYSTEM_PROMPT, PROMPT_TEMPLATE
 
 def get_interpretation(text):
     api_key = st.secrets["ANTHROPIC_API_KEY"]
-    model_name = st.secrets["MODEL_NAME"]
+    model_name = st.secrets.get("MODEL_NAME", "claude-sonnet-4-6")
     client = anthropic.Anthropic(api_key=api_key)
     
     message = client.messages.create(
