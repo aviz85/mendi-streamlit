@@ -90,9 +90,19 @@ class UsageLogger:
         return stats
 
 class StreamlitLogger:
-    def __init__(self, placeholder: Optional[st.empty] = None):
-        self.placeholder = placeholder or st.empty()
+    def __init__(self):
+        self._placeholder = None
         self.logs = []
+
+    @property
+    def placeholder(self):
+        if self._placeholder is None:
+            self._placeholder = st.empty()
+        return self._placeholder
+
+    @placeholder.setter
+    def placeholder(self, value):
+        self._placeholder = value
         
     def log(self, message: str, emoji: str = "ℹ️"):
         """Add log message with emoji and display in Streamlit"""
