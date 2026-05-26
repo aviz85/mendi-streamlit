@@ -12,7 +12,13 @@ class NikudService:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.doc_processor = DocumentProcessor()
-        self.gemini = GeminiService()
+        self._gemini = None
+
+    @property
+    def gemini(self):
+        if self._gemini is None:
+            self._gemini = GeminiService()
+        return self._gemini
         
     def _read_docx(self, file_path: str) -> Tuple[str, Document]:
         """Read DOCX file and extract text while preserving bold formatting"""

@@ -3,6 +3,7 @@ import google.generativeai as genai
 from typing import Dict
 import logging
 import sys
+import streamlit as st
 from .usage_logger import streamlit_logger as st_log
 
 def setup_logger():
@@ -32,7 +33,7 @@ def setup_logger():
 class GeminiService:
     def __init__(self):
         self.logger = setup_logger()
-        genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
         
         st_log.log("מאתחל את שירות Gemini...", "🔄")
         
