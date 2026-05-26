@@ -1,6 +1,6 @@
 GLOBAL_CSS = """
     <style>
-        .stApp { direction: rtl; }
+        .stMainBlockContainer, .stSidebar { direction: rtl; text-align: right; }
         .stTextArea textarea { direction: rtl; }
         .log-container {
             background-color: #f0f2f6;
